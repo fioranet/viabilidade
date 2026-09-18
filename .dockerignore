@@ -1,0 +1,15 @@
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+.dockerignore
+.pytest_cache
+.vscode
+.idea
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep

@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  viabilidade:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: viabilidade_app
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - viabilidade_data:/app/backend/data
+    environment:
+      - PORT=8000
+      - NOMINATIM_USER_AGENT=ViabilidadeISP_Engine/1.0 (contato@nuvv.com.br)
+      - TOLERANCIA_BORDA_METROS=5.0
+      - MAX_DISTANCIA_ANALISE_METROS=100.0
+    restart: unless-stopped
+
+volumes:
+  viabilidade_data:
+    driver: local

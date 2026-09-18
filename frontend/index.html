@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Viabilidade Técnica Geográfica | ISP Telecom</title>
+  <meta name="description" content="Consulta em tempo real de viabilidade técnica de atendimento com base em manchas poligonais, POPs e geocodificação.">
+  
+  <!-- Fontes & Ícones -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <!-- CSS Customizado -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Painel Lateral / Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">
+        <i class="fa-solid fa-tower-broadcast"></i>
+      </div>
+      <div class="brand-text">
+        <h1>GeoViabilidade</h1>
+        <span>Telecom GIS Engine</span>
+      </div>
+    </div>
+
+    <!-- Navegação por Abas -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="tab-search">
+        <i class="fa-solid fa-magnifying-glass-location"></i>
+        <span>Consulta</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-batch">
+        <i class="fa-solid fa-file-csv"></i>
+        <span>Lote</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-layers">
+        <i class="fa-solid fa-layer-group"></i>
+        <span>Manchas</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-pops">
+        <i class="fa-solid fa-server"></i>
+        <span>POPs</span>
+      </button>
+    </nav>
+
+    <!-- ABA 1: CONSULTA UNITÁRIA -->
+    <div id="tab-search" class="tab-content active">
+      <form id="search-form">
+        <div class="input-group">
+          <label class="input-label" for="search-input">Endereço ou CEP:</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <div class="search-box" style="flex: 1;">
+              <i class="fa-solid fa-location-dot search-icon"></i>
+              <input 
+                type="text" 
+                id="search-input" 
+                class="search-input" 
+                placeholder="Ex: 08664-465 ou Rua Gonroku Yoshimoto"
+                autocomplete="off"
+                required
+              />
+            </div>
+            <div style="width: 86px;">
+              <input 
+                type="text" 
+                id="search-number-input" 
+                class="search-input" 
+                placeholder="Nº (opc.)" 
+                style="text-align: center; font-weight: 600;"
+                title="Número do imóvel (opcional para refinar CEP e rua)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.85rem;">
+          <button type="submit" id="search-btn" class="btn-primary" style="flex: 1;">
+            <i class="fa-solid fa-bolt"></i> Consultar Viabilidade
+          </button>
+          <button type="button" id="btn-gps" class="btn-secondary" title="Usar localização GPS do dispositivo">
+            <i class="fa-solid fa-crosshairs"></i>
+          </button>
+        </div>
+      </form>
+
+      <!-- Card de Resultado -->
+      <div id="result-container" class="result-container">
+        <div id="result-card-inner" class="result-card">
+          <div id="result-badge" class="badge"></div>
+          <h2 id="result-title" class="result-title"></h2>
+          <p id="result-desc" class="result-desc"></p>
+
+          <div class="meta-grid">
+            <div class="meta-item">
+              <span class="meta-label">Tecnologia</span>
+              <span id="meta-tech" class="meta-value"></span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">POP Atendimento</span>
+              <span id="meta-pop" class="meta-value"></span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Região / Bairro</span>
+              <span id="meta-region" class="meta-value"></span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Distância Borda</span>
+              <span id="meta-distance" class="meta-value"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABA 2: PROCESSAMENTO EM LOTE (BULK CHECK) -->
+    <div id="tab-batch" class="tab-content">
+      <div style="margin-bottom: 1rem;">
+        <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 0.35rem;">Validação em Massa (Lote)</h3>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
+          Envie sua planilha com colunas de Endereço, CEP ou Lat/Long. O sistema processará assincronamente com controle de rate limit.
+        </p>
+      </div>
+
+      <div id="dropzone" class="dropzone">
+        <i class="fa-solid fa-cloud-arrow-up dropzone-icon"></i>
+        <p><strong>Clique para selecionar</strong> ou arraste o arquivo aqui</p>
+        <span>Formatos aceitos: .CSV ou .XLSX</span>
+        <input type="file" id="file-batch-input" accept=".csv, .xlsx, .xls" style="display: none;" />
+      </div>
+
+      <div style="text-align: right; margin-bottom: 1rem;">
+        <a href="/sample_data/teste_lote.csv" download style="color: #3b82f6; font-size: 0.78rem; text-decoration: none;">
+          <i class="fa-solid fa-download"></i> Baixar planilha modelo (.CSV)
+        </a>
+      </div>
+
+      <!-- Barra de Progresso e Estatísticas -->
+      <div id="progress-container" class="progress-container">
+        <div class="progress-header">
+          <span id="progress-text">Processando registros...</span>
+          <span id="progress-percent" style="font-weight: 700; color: #fff;">0%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div id="progress-bar-fill" class="progress-bar-fill"></div>
+        </div>
+
+        <div class="batch-counters">
+          <div class="batch-box">
+            <div id="count-viable" class="number" style="color: var(--color-viable);">0</div>
+            <div class="lbl">Viáveis</div>
+          </div>
+          <div class="batch-box">
+            <div id="count-analysis" class="number" style="color: var(--color-analysis);">0</div>
+            <div class="lbl">Em Análise</div>
+          </div>
+          <div class="batch-box">
+            <div id="count-unviable" class="number" style="color: var(--color-unviable);">0</div>
+            <div class="lbl">Inviáveis</div>
+          </div>
+        </div>
+
+        <a id="batch-download-btn" class="btn-primary" style="margin-top: 1.25rem; text-decoration: none; display: none;" download>
+          <i class="fa-solid fa-file-arrow-down"></i> Baixar Relatório Enriquecido (.CSV)
+        </a>
+      </div>
+    </div>
+
+    <!-- ABA 3: GESTÃO DE MANCHAS -->
+    <div id="tab-layers" class="tab-content">
+      <div style="margin-bottom: 1.25rem;">
+        <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 0.35rem;">Gestão de Polígonos de Cobertura</h3>
+        <p style="font-size: 0.8rem; color: var(--text-secondary);">
+          Ative, desative ou exclua manchas da base de cálculo geoespacial.
+        </p>
+      </div>
+
+      <div id="layers-list-container" style="margin-bottom: 1.5rem;">
+        <!-- Itens inseridos dinamicamente -->
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid var(--border-color); margin-bottom: 1.25rem;" />
+
+      <div>
+        <h3 style="font-size: 0.9rem; font-weight: 700; margin-bottom: 0.85rem;">Importar Nova Cobertura</h3>
+        <form id="layer-upload-form">
+          <div class="input-group">
+            <label class="input-label" for="layer-file-input">Arquivo Vetorial (.GeoJSON ou .KMZ):</label>
+            <input type="file" id="layer-file-input" class="search-input" accept=".geojson, .json, .kmz, .kml" required />
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="layer-name-input">Nome da Camada (Opcional):</label>
+            <input type="text" id="layer-name-input" class="search-input" placeholder="Ex: Expansão Suzano Norte 2026" />
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="layer-tech-select">Tecnologia Predominante:</label>
+            <select id="layer-tech-select" class="search-input">
+              <option value="Fibra GPON">Fibra GPON</option>
+              <option value="Rede Neutra">Rede Neutra</option>
+              <option value="Rádio 5.8GHz">Rádio 5.8GHz</option>
+              <option value="Fibra Ponto a Ponto">Fibra Ponto a Ponto</option>
+            </select>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="layer-pop-select">Vincular a POP:</label>
+            <select id="layer-pop-select" class="search-input">
+              <!-- Opções de POPs carregadas dinamicamente -->
+            </select>
+          </div>
+
+          <button type="submit" id="layer-upload-btn" class="btn-primary">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Fazer Upload e Ativar
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ABA 4: GESTÃO DE POPS (PONTOS DE PRESENÇA) -->
+    <div id="tab-pops" class="tab-content">
+      <div style="margin-bottom: 1.25rem;">
+        <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 0.35rem;">Pontos de Presença (POPs)</h3>
+        <p style="font-size: 0.8rem; color: var(--text-secondary);">
+          Estações centrais, hubs de fibra e centros de distribuição da rede.
+        </p>
+      </div>
+
+      <div id="pops-list-container" style="margin-bottom: 1.5rem;">
+        <!-- Inseridos dinamicamente -->
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid var(--border-color); margin-bottom: 1.25rem;" />
+
+      <div>
+        <h3 style="font-size: 0.9rem; font-weight: 700; margin-bottom: 0.85rem;">Cadastrar Novo POP</h3>
+        <form id="pop-create-form">
+          <div class="input-group">
+            <label class="input-label" for="pop-name-input">Nome do POP:</label>
+            <input type="text" id="pop-name-input" class="search-input" placeholder="Ex: POP Suzano Norte" required />
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <div style="flex: 1;">
+              <label class="input-label" for="pop-city-input">Cidade / Região:</label>
+              <input type="text" id="pop-city-input" class="search-input" placeholder="Ex: Suzano" />
+            </div>
+            <div style="flex: 1;">
+              <label class="input-label" for="pop-tech-select">Tecnologia:</label>
+              <select id="pop-tech-select" class="search-input">
+                <option value="Fibra GPON">Fibra GPON</option>
+                <option value="Rede Neutra">Rede Neutra</option>
+                <option value="Rádio 5.8GHz">Rádio 5.8GHz</option>
+                <option value="Data Center / Core">Data Center / Core</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="pop-address-input">Endereço / Referência:</label>
+            <input type="text" id="pop-address-input" class="search-input" placeholder="Ex: Av. Brasil, 450" />
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <div style="flex: 1;">
+              <label class="input-label" for="pop-lat-input">Latitude:</label>
+              <input type="number" step="any" id="pop-lat-input" class="search-input" placeholder="-23.5350" required />
+            </div>
+            <div style="flex: 1;">
+              <label class="input-label" for="pop-lon-input">Longitude:</label>
+              <input type="number" step="any" id="pop-lon-input" class="search-input" placeholder="-46.3100" required />
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="pop-capacity-input">Capacidade / Uplink:</label>
+            <input type="text" id="pop-capacity-input" class="search-input" placeholder="Ex: 10 Gbps (Redundante)" />
+          </div>
+
+          <button type="submit" id="pop-submit-btn" class="btn-primary">
+            <i class="fa-solid fa-plus"></i> Salvar POP
+          </button>
+        </form>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Mapa Leaflet Interativo -->
+  <main id="map">
+    <!-- Legenda Flutuante -->
+    <div class="map-legend">
+      <div class="legend-title">Legenda</div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #10b981;"></div>
+        <span>Fibra GPON (Própria)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #3b82f6;"></div>
+        <span>Rede Neutra</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #f59e0b;"></div>
+        <span>Rádio 5.8GHz</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #6366f1; border-radius: 4px;"></div>
+        <span>POP (Ponto de Presença)</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- App Script -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

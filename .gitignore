@@ -1,0 +1,24 @@
+# Ambientes virtuais Python
+.venv/
+venv/
+env/
+
+# Bytecode e Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDE e Editores
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Arquivos temporários de uploads do usuário (manter apenas o .gitkeep)
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+
+# Arquivos de ambiente
+.env
+.env.local

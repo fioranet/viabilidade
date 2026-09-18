@@ -1,0 +1,11 @@
+ID;Logradouro;Numero;Bairro;Cidade;UF;CEP;Latitude;Longitude
+1;Avenida Paulista;1000;Bela Vista;São Paulo;SP;01310-100;;
+2;Rua Augusta;1500;Consolação;São Paulo;SP;01304-001;;
+3;Rua dos Pinheiros;400;Pinheiros;São Paulo;SP;05422-000;;
+4;Avenida Brigadeiro Faria Lima;2232;Jardim Paulistano;São Paulo;SP;01451-000;;
+5;Avenida Ibirapuera;2500;Moema;São Paulo;SP;04028-002;;
+6;Rua Domingos de Morais;1200;Vila Mariana;São Paulo;SP;04010-100;;
+7;Ponto Teste Coordenada Paulista;;;;;;-23.5650;-46.6550
+8;Ponto Teste Coordenada Faria Lima;;;;;;-23.5700;-46.6900
+9;Avenida Francisco Glicério;1000;Centro;Campinas;SP;13012-100;;
+10;Ponto Inviável Longe;;;;;;-23.0000;-47.0000

@@ -1,0 +1,105 @@
+{
+  "type": "FeatureCollection",
+  "name": "Cobertura ISP Fibra e Rede Neutra - SP Central",
+  "technology": "Fibra GPON",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "mancha_01",
+        "name": "Mancha Paulista - Jardins",
+        "region": "Bela Vista / Cerqueira César",
+        "pop": "POP-PAULISTA-01",
+        "technology": "Fibra GPON",
+        "capacidade_portas": 1024,
+        "status": "Ativo"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-46.6660, -23.5550],
+            [-46.6500, -23.5600],
+            [-46.6450, -23.5700],
+            [-46.6580, -23.5750],
+            [-46.6720, -23.5650],
+            [-46.6660, -23.5550]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "mancha_02",
+        "name": "Mancha Pinheiros - Faria Lima",
+        "region": "Pinheiros / Itaim Bibi",
+        "pop": "POP-PINHEIROS-02",
+        "technology": "Fibra GPON",
+        "capacidade_portas": 2048,
+        "status": "Ativo"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-46.6980, -23.5600],
+            [-46.6800, -23.5680],
+            [-46.6850, -23.5850],
+            [-46.7020, -23.5800],
+            [-46.7080, -23.5680],
+            [-46.6980, -23.5600]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "mancha_03",
+        "name": "Mancha Moema - Vila Mariana",
+        "region": "Moema / Vila Mariana",
+        "pop": "POP-SUL-03",
+        "technology": "Rede Neutra",
+        "capacidade_portas": 512,
+        "status": "Ativo"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-46.6550, -23.5850],
+            [-46.6380, -23.5900],
+            [-46.6450, -23.6100],
+            [-46.6650, -23.6050],
+            [-46.6550, -23.5850]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "mancha_04",
+        "name": "Mancha Santana - Zona Norte",
+        "region": "Santana",
+        "pop": "POP-NORTE-04",
+        "technology": "Rádio 5.8GHz",
+        "capacidade_portas": 128,
+        "status": "Ativo"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-46.6350, -23.5000],
+            [-46.6180, -23.5050],
+            [-46.6220, -23.5180],
+            [-46.6400, -23.5140],
+            [-46.6350, -23.5000]
+          ]
+        ]
+      }
+    }
+  ]
+}

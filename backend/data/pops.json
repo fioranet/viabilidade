@@ -1,0 +1,24 @@
+[
+  {
+    "id": "pop-suzano-centro",
+    "name": "POP Suzano Centro",
+    "city": "Suzano",
+    "address": "Rua General Francisco Glicério, Centro, Suzano - SP",
+    "latitude": -23.5375,
+    "longitude": -46.3125,
+    "capacity": "10 Gbps (Redundante)",
+    "technology": "Fibra GPON",
+    "notes": "Hub central de distribuição para Suzano e adjacências"
+  },
+  {
+    "id": "pop-poa-estacao",
+    "name": "POP Poá Estação",
+    "city": "Poá",
+    "address": "Avenida Brasil, Centro, Poá - SP",
+    "latitude": -23.523,
+    "longitude": -46.343,
+    "capacity": "10 Gbps",
+    "technology": "Fibra GPON",
+    "notes": "Ponto de presença próximo à CPTM Poá"
+  }
+]
