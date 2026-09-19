@@ -69,8 +69,8 @@ class BatchProcessor:
             col_lat = find_col("lat", "latitude")
             col_lng = find_col("long", "lng", "longitude")
             col_cep = find_col("cep", "postal")
-            col_logradouro = find_col("logradouro", "rua", "endereco", "endereço", "street")
-            col_numero = find_col("numero", "número", "num", "number")
+            col_logradouro = find_col("logradouro", "rua", "endereco", "endereço", "street", "av", "avenida")
+            col_numero = find_col("numero", "número", "num", "number", "nº", "no")
             col_bairro = find_col("bairro", "district", "neighborhood")
             col_cidade = find_col("cidade", "city", "municipio", "município")
             col_uf = find_col("uf", "estado", "state")
@@ -95,42 +95,60 @@ class BatchProcessor:
                 # 2. Se não tem coordenadas, construir query para geocodificação
                 geo_source = "coordenadas_originais"
                 if lat_val is None or lng_val is None:
-                    query_parts = []
-                    
-                    # Se tiver CEP
+                    # Extrair número se fornecido
+                    num_val = None
+                    if col_numero and pd.notna(row[col_numero]):
+                        raw_num = str(row[col_numero]).strip().replace(".0", "")
+                        if raw_num and raw_num.lower() != "nan":
+                            num_val = raw_num
+
+                    # Extrair CEP
+                    cep_val = None
                     if col_cep and pd.notna(row[col_cep]):
-                        cep_val = str(row[col_cep]).strip().replace(".0", "")
-                        if cep_val and cep_val.lower() != "nan":
-                            query_parts.append(f"CEP {cep_val}")
+                        raw_cep = str(row[col_cep]).strip().replace(".0", "")
+                        if raw_cep and raw_cep.lower() != "nan":
+                            cep_val = raw_cep
 
-                    if col_logradouro and pd.notna(row[col_logradouro]):
-                        logr = str(row[col_logradouro]).strip()
-                        if col_numero and pd.notna(row[col_numero]):
-                            num = str(row[col_numero]).strip().replace(".0", "")
-                            logr = f"{logr}, {num}"
-                        query_parts.append(logr)
+                    geo_res = None
+                    
+                    # Prioridade 1: Se tem CEP (e opcionalmente número), usa o motor de alta precisão ViaCEP+Nominatim
+                    if cep_val:
+                        geo_res = await geocoding_service.geocode(cep_val, number=num_val)
 
-                    if col_bairro and pd.notna(row[col_bairro]):
-                        query_parts.append(str(row[col_bairro]).strip())
+                    # Prioridade 2: Se não encontrou por CEP ou não tem CEP, montar endereço textual
+                    if not geo_res:
+                        query_parts = []
+                        if col_logradouro and pd.notna(row[col_logradouro]):
+                            logr = str(row[col_logradouro]).strip()
+                            if logr and logr.lower() != "nan":
+                                if num_val and num_val not in logr:
+                                    logr = f"{logr}, {num_val}"
+                                query_parts.append(logr)
 
-                    if col_cidade and pd.notna(row[col_cidade]):
-                        cid = str(row[col_cidade]).strip()
-                        if col_uf and pd.notna(row[col_uf]):
-                            cid = f"{cid} - {str(row[col_uf]).strip()}"
-                        query_parts.append(cid)
+                        if col_bairro and pd.notna(row[col_bairro]):
+                            b = str(row[col_bairro]).strip()
+                            if b and b.lower() != "nan":
+                                query_parts.append(b)
 
-                    full_query = ", ".join([p for p in query_parts if p and p != "nan"])
+                        if col_cidade and pd.notna(row[col_cidade]):
+                            cid = str(row[col_cidade]).strip()
+                            if cid and cid.lower() != "nan":
+                                if col_uf and pd.notna(row[col_uf]):
+                                    uf_str = str(row[col_uf]).strip()
+                                    if uf_str and uf_str.lower() != "nan":
+                                        cid = f"{cid} - {uf_str}"
+                                query_parts.append(cid)
 
-                    if full_query:
-                        geo_res = await geocoding_service.geocode(full_query)
-                        if geo_res:
-                            lat_val = geo_res.latitude
-                            lng_val = geo_res.longitude
-                            geo_source = geo_res.source
-                        else:
-                            geo_source = "falha_geocodificacao"
+                        full_query = ", ".join(query_parts)
+                        if full_query:
+                            geo_res = await geocoding_service.geocode(full_query, number=num_val)
+
+                    if geo_res:
+                        lat_val = geo_res.latitude
+                        lng_val = geo_res.longitude
+                        geo_source = geo_res.source
                     else:
-                        geo_source = "endereco_vazio"
+                        geo_source = "falha_geocodificacao"
 
                 # 3. Validar no motor espacial se encontramos coordenadas
                 if lat_val is not None and lng_val is not None:

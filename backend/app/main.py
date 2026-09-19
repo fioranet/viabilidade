@@ -255,8 +255,31 @@ async def download_batch_result(job_id: str):
         media_type="text/csv"
     )
 
+@app.get("/api/batch/template", tags=["Processamento em Lote"])
+async def download_batch_template():
+    """Download da planilha modelo (.CSV) para consulta em lote."""
+    template_file = BACKEND_DIR.parent / "sample_data" / "teste_lote.csv"
+    if not template_file.exists():
+        template_file = Path("/app/sample_data/teste_lote.csv")
+    if not template_file.exists():
+        raise HTTPException(status_code=404, detail="Arquivo modelo não encontrado.")
+    
+    return FileResponse(
+        path=template_file,
+        filename="modelo_consulta_viabilidade.csv",
+        media_type="text/csv"
+    )
+
 # ==========================================
 # SERVIR FRONTEND ESTÁTICO
 # ==========================================
+# Servir sample_data estático para compatibilidade de links diretos
+sample_dir = BACKEND_DIR.parent / "sample_data"
+if not sample_dir.exists():
+    sample_dir = Path("/app/sample_data")
+if sample_dir.exists():
+    app.mount("/sample_data", StaticFiles(directory=str(sample_dir)), name="sample_data")
+
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+
