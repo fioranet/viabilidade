@@ -1,5 +1,5 @@
-import { api } from "./api.js";
-import { MapManager } from "./map.js";
+import { api } from "./api.js?v=2.0.1";
+import { MapManager } from "./map.js?v=2.0.1";
 
 document.addEventListener("DOMContentLoaded", () => {
   const mapManager = new MapManager("map");
