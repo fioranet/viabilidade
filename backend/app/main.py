@@ -63,7 +63,24 @@ async def check_viability(payload: ViabilityQueryRequest):
     """
     Realiza a checagem de viabilidade técnica.
     Pode receber endereço textual, CEP com número opcional ou coordenadas diretas (Lat, Lon).
+    Opcionalmente recebe 'layers' ou 'layer' para filtrar as manchas de cobertura a serem consultadas.
     """
+    # 1. Tratar seleção de mapas/camadas
+    requested_layers = payload.get_requested_layers()
+    target_layer_ids = None
+    consulted_layer_names = None
+
+    if requested_layers:
+        resolved_ids, not_found = layer_manager.resolve_layer_ids(requested_layers)
+        if not_found:
+            available_layers = [f"'{m.id}' ({m.name})" for m in layer_manager.get_all_metadata()]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Camada(s) ou mapa(s) não encontrado(s): {', '.join(not_found)}. Disponíveis: {', '.join(available_layers) if available_layers else 'nenhuma cadastrada'}."
+            )
+        target_layer_ids = resolved_ids
+        consulted_layer_names = [layer_manager.metadata[lid].name for lid in resolved_ids if lid in layer_manager.metadata]
+
     lat = payload.latitude
     lon = payload.longitude
     display_name = None
@@ -83,6 +100,7 @@ async def check_viability(payload: ViabilityQueryRequest):
                 status=ViabilityStatus.INVIAVEL,
                 input_query=payload.query,
                 location=Coordinates(latitude=0.0, longitude=0.0),
+                consulted_layers=consulted_layer_names or [m.name for m in layer_manager.get_all_metadata() if m.enabled],
                 message="Endereço não localizado pelo serviço de geocodificação. Verifique a grafia ou insira as coordenadas."
             )
         
@@ -91,11 +109,12 @@ async def check_viability(payload: ViabilityQueryRequest):
         display_name = geocoded.display_name
         source = geocoded.source
 
-    # Validar no motor espacial
-    response = spatial_engine.check_viability(lat, lon)
+    # Validar no motor espacial com filtro opcional de camadas
+    response = spatial_engine.check_viability(lat, lon, target_layer_ids=target_layer_ids)
     response.input_query = payload.query
     response.display_name = display_name or f"Coordenadas: {lat:.6f}, {lon:.6f}"
     response.geocoding_source = source
+    response.consulted_layers = consulted_layer_names or [m.name for m in layer_manager.get_all_metadata() if m.enabled]
     return response
 
 # ==========================================
@@ -116,6 +135,14 @@ async def get_layers_geojson():
 async def toggle_layer(layer_id: str):
     """Ativa ou desativa uma camada de cobertura."""
     updated = layer_manager.toggle_layer(layer_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Camada não encontrada.")
+    return updated
+
+@app.post("/api/layers/{layer_id}/primary", response_model=LayerMetadata, tags=["Camadas Geográficas"])
+async def toggle_layer_primary(layer_id: str):
+    """Marca ou desmarca uma camada como principal/padrão do sistema."""
+    updated = layer_manager.toggle_primary(layer_id)
     if not updated:
         raise HTTPException(status_code=404, detail="Camada não encontrada.")
     return updated
@@ -212,21 +239,34 @@ async def delete_pop(pop_id: str):
 @app.post("/api/batch/upload", tags=["Processamento em Lote"])
 async def upload_batch(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    layers: Optional[str] = Form(None)
 ):
     """
     Recebe um arquivo CSV ou XLSX com endereços/coordenadas para verificação em lote assíncrona.
+    Opcionalmente recebe 'layers' para filtrar as manchas avaliadas durante o processamento do lote.
     """
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in [".csv", ".xlsx", ".xls"]:
         raise HTTPException(status_code=400, detail="Envie um arquivo no formato CSV (.csv) ou Excel (.xlsx).")
+
+    target_layer_ids = None
+    if layers and layers.strip():
+        req_list = [p.strip() for p in layers.split(",") if p.strip()]
+        resolved_ids, not_found = layer_manager.resolve_layer_ids(req_list)
+        if not_found:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Camada(s) não encontrada(s): {', '.join(not_found)}"
+            )
+        target_layer_ids = resolved_ids
 
     temp_path = UPLOADS_DIR / f"batch_input_{file.filename}"
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     job_id = await batch_processor.start_batch_job(temp_path, file.filename)
-    background_tasks.add_task(batch_processor.execute_batch, job_id, temp_path)
+    background_tasks.add_task(batch_processor.execute_batch, job_id, temp_path, target_layer_ids=target_layer_ids)
 
     return {
         "job_id": job_id,

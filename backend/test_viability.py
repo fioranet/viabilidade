@@ -43,13 +43,42 @@ def run_tests():
     assert res3.status in [ViabilityStatus.EM_ANALISE, ViabilityStatus.VIAVEL]
     print(" -> PASSED: Detectada proximidade e distância calculada corretamente.")
 
-    # 5. Teste Caso 4: Ponto muito distante (Inviável)
+    # 4. Teste Caso 4: Ponto muito distante (Inviável)
     # Coordenadas: -23.0000, -47.0000 (fora da capital)
     res4 = spatial_engine.check_viability(latitude=-23.0000, longitude=-47.0000)
     print(f"\nTeste 4 (Distante): Status={res4.status.value}, Distância={res4.distance_to_nearest_meters}m")
     assert res4.status == ViabilityStatus.INVIAVEL
     assert res4.distance_to_nearest_meters > 50000 # > 50km
     print(" -> PASSED: Ponto distante classificado como Inviável com cálculo de distância métrica.")
+
+    # 5. Teste Caso 5: Ponto em Suzano com filtro específico de camada
+    # Coordenadas internas do polígono SPSZN002H de Suzano: lat -23.5416, lon -46.3147
+    res5 = spatial_engine.check_viability(latitude=-23.5416, longitude=-46.3147, target_layer_ids=["suzano"])
+    print(f"\nTeste 5 (Filtro Suzano no ponto de Suzano): Status={res5.status.value}, Mancha={res5.matched_polygon.polygon_name if res5.matched_polygon else 'N/A'}")
+    assert res5.status == ViabilityStatus.VIAVEL
+    assert res5.matched_polygon.layer_id == "suzano"
+    print(" -> PASSED: Viabilidade confirmada filtrando estritamente pela camada 'suzano'.")
+
+    # 6. Teste Caso 6: Ponto na Paulista filtrando apenas por Suzano (deve resultar em INVIÁVEL)
+    res6 = spatial_engine.check_viability(latitude=-23.5650, longitude=-46.6550, target_layer_ids=["suzano"])
+    print(f"\nTeste 6 (Paulista filtrado apenas por Suzano): Status={res6.status.value}, Distância={res6.distance_to_nearest_meters}m")
+    assert res6.status == ViabilityStatus.INVIAVEL
+    assert res6.distance_to_nearest_meters > 25000  # Paulista fica a ~30km de Suzano
+    print(" -> PASSED: Ponto em outra região é corretamente classificado como Inviável quando o mapa é restrito.")
+
+    # 7. Teste Caso 7: Resolução inteligente de nomes com e sem acentos
+    resolved_ok, not_found_empty = layer_manager.resolve_layer_ids(["poa", "Suzano"])
+    print(f"\nTeste 7 (Resolução inteligente de nomes): Solicitado=['poa', 'Suzano'] -> Resolvido={resolved_ok}")
+    assert "poá" in resolved_ok
+    assert "suzano" in resolved_ok
+    assert len(not_found_empty) == 0
+    print(" -> PASSED: 'poa' sem acento e 'Suzano' com maiúscula resolvidos perfeitamente.")
+
+    # 8. Teste Caso 8: Resolução de camada inexistente
+    _, not_found = layer_manager.resolve_layer_ids(["camada_que_nao_existe"])
+    print(f"\nTeste 8 (Camada inexistente): Not Found={not_found}")
+    assert "camada_que_nao_existe" in not_found
+    print(" -> PASSED: Camadas inválidas são identificadas corretamente.")
 
     print("\n==========================================")
     print("TODOS OS TESTES DO MOTOR ESPACIAL PASSARAM!")

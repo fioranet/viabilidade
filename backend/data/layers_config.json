@@ -1,5 +1,8 @@
 {
   "poá": {
     "enabled": true
+  },
+  "suzano": {
+    "is_primary": true
   }
 }

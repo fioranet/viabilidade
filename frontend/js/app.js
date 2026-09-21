@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const searchForm = document.getElementById("search-form");
   const searchInput = document.getElementById("search-input");
   const searchNumberInput = document.getElementById("search-number-input");
+  const searchLayerSelect = document.getElementById("search-layer-select");
   const searchBtn = document.getElementById("search-btn");
   const btnGps = document.getElementById("btn-gps");
 
@@ -30,6 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Lote
   const dropzone = document.getElementById("dropzone");
   const fileBatchInput = document.getElementById("file-batch-input");
+  const batchLayerSelect = document.getElementById("batch-layer-select");
   const progressContainer = document.getElementById("progress-container");
   const progressBarFill = document.getElementById("progress-bar-fill");
   const progressText = document.getElementById("progress-text");
@@ -55,6 +57,50 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   // CARREGAR DADOS INICIAIS
   // ==========================================
+  function populateLayerSelects(layers) {
+    const selects = [searchLayerSelect, batchLayerSelect].filter(Boolean);
+    const primaryLayers = layers.filter(l => l.enabled && l.is_primary);
+    const primaryNames = primaryLayers.map(l => l.name).join(", ");
+
+    selects.forEach(sel => {
+      const currentVal = sel.value;
+      sel.innerHTML = "";
+
+      // 1. Se houver camadas principais definidas, criar opção de Principais no topo
+      if (primaryLayers.length > 0) {
+        const optPrimary = document.createElement("option");
+        optPrimary.value = "__primary__";
+        optPrimary.textContent = `⭐ Manchas Principais (${primaryNames})`;
+        sel.appendChild(optPrimary);
+      }
+
+      // 2. Opção para Todas as Manchas Ativas (Geral)
+      const optAll = document.createElement("option");
+      optAll.value = "";
+      optAll.textContent = "🌐 Todas as Manchas Ativas (Geral)";
+      sel.appendChild(optAll);
+
+      // 3. Opções individuais para cada mancha ativa
+      layers.forEach(layer => {
+        if (layer.enabled) {
+          const opt = document.createElement("option");
+          opt.value = layer.id;
+          opt.textContent = `${layer.is_primary ? '⭐ ' : ''}${layer.name} (${layer.technology})`;
+          sel.appendChild(opt);
+        }
+      });
+
+      // Manter seleção anterior se ainda existir; caso contrário, pré-selecionar principais se existirem
+      if (currentVal && Array.from(sel.options).some(o => o.value === currentVal)) {
+        sel.value = currentVal;
+      } else if (primaryLayers.length > 0) {
+        sel.value = "__primary__";
+      } else {
+        sel.value = "";
+      }
+    });
+  }
+
   async function loadCoverageLayers() {
     try {
       const geojson = await api.getLayersGeoJSON();
@@ -68,6 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function renderLayersList() {
     try {
       const layers = await api.getLayers();
+      populateLayerSelects(layers);
       layersListContainer.innerHTML = "";
 
       if (layers.length === 0) {
@@ -82,11 +129,21 @@ document.addEventListener("DOMContentLoaded", () => {
           <div class="layer-info" style="flex: 1; min-width: 0;">
             <div class="layer-color-dot" style="background-color: ${layer.color};"></div>
             <div style="min-width: 0;">
-              <div class="layer-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${layer.name}</div>
+              <div class="layer-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 0.4rem;">
+                ${layer.is_primary ? '<i class="fa-solid fa-star" style="color: #fbbf24; font-size: 0.75rem;" title="Mancha Principal"></i>' : ''}
+                <span>${layer.name}</span>
+              </div>
               <div class="layer-subtitle">${layer.technology} • ${layer.polygon_count} polígono(s)${layer.pop_name ? ` • POP: ${layer.pop_name}` : ''}</div>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 0.75rem; margin-left: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.65rem; margin-left: 0.5rem;">
+            <button type="button" 
+                    class="btn-star ${layer.is_primary ? 'active' : ''} btn-toggle-primary" 
+                    data-id="${layer.id}" 
+                    title="${layer.is_primary ? 'Mancha Principal do sistema (clique para desmarcar)' : 'Marcar como Mancha Principal do sistema'}">
+              <i class="fa-${layer.is_primary ? 'solid' : 'regular'} fa-star"></i>
+              <span>Principal</span>
+            </button>
             <label class="switch" title="${layer.enabled ? 'Clique para desativar' : 'Clique para ativar'}">
               <input type="checkbox" class="layer-toggle-checkbox" data-id="${layer.id}" ${layer.enabled ? 'checked' : ''}>
               <span class="slider"></span>
@@ -99,6 +156,20 @@ document.addEventListener("DOMContentLoaded", () => {
         layersListContainer.appendChild(item);
       });
 
+      // Eventos de marcar/desmarcar Principal
+      layersListContainer.querySelectorAll(".btn-toggle-primary").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          const btnEl = e.currentTarget;
+          const layerId = btnEl.dataset.id;
+          try {
+            await api.toggleLayerPrimary(layerId);
+            await renderLayersList();
+          } catch (err) {
+            alert(`Falha ao alterar status principal: ${err.message}`);
+          }
+        });
+      });
+
       // Eventos de toggle (ativar/desativar)
       layersListContainer.querySelectorAll(".layer-toggle-checkbox").forEach(cb => {
         cb.addEventListener("change", async (e) => {
@@ -107,6 +178,7 @@ document.addEventListener("DOMContentLoaded", () => {
             await api.toggleLayer(layerId);
             const geojson = await api.getLayersGeoJSON();
             mapManager.renderCoverage(geojson);
+            await renderLayersList();
           } catch (err) {
             alert(`Falha ao alterar status da camada: ${err.message}`);
             e.target.checked = !e.target.checked;
@@ -279,8 +351,13 @@ document.addEventListener("DOMContentLoaded", () => {
     searchBtn.innerHTML = `<span class="spinner"></span> Consultando...`;
     resultContainer.style.display = "none";
 
+    let selectedLayer = searchLayerSelect ? searchLayerSelect.value : null;
+    if (selectedLayer === "__primary__") {
+      selectedLayer = "primary";
+    }
+
     try {
-      const data = await api.checkViability(query, number, lat, lon);
+      const data = await api.checkViability(query, number, lat, lon, selectedLayer || null);
       displayViabilityResult(data);
     } catch (err) {
       alert(`Falha na consulta: ${err.message}`);
@@ -317,6 +394,30 @@ document.addEventListener("DOMContentLoaded", () => {
     metaPop.textContent = poly ? (poly.pop || "POP Padrão") : "N/A";
     metaRegion.textContent = poly ? poly.region : "Fora de Cobertura";
     metaDistance.textContent = data.distance_to_nearest_meters > 0 ? `${data.distance_to_nearest_meters}m` : "0m (No Perímetro)";
+
+    // Exibir sobreposições caso haja múltiplos polígonos atendendo o ponto
+    const overlapsEl = document.getElementById("result-overlaps");
+    if (overlapsEl) {
+      if (data.all_matched_polygons && data.all_matched_polygons.length > 1) {
+        overlapsEl.style.display = "block";
+        overlapsEl.innerHTML = `
+          <div style="color: var(--text-main); font-weight: 600; margin-bottom: 0.35rem;">
+            <i class="fa-solid fa-layer-group" style="color: var(--primary);"></i> Coberturas Sobrepostas (${data.all_matched_polygons.length}):
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            ${data.all_matched_polygons.map((p, idx) => `
+              <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.04); border: 1px solid var(--border); padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.78rem;">
+                <span>${idx === 0 ? '⭐ <strong>(Principal)</strong> ' : ''}${p.polygon_name}</span>
+                <span style="color: var(--primary); font-size: 0.72rem;">${p.technology} • ${p.pop || 'POP'}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } else {
+        overlapsEl.style.display = "none";
+        overlapsEl.innerHTML = "";
+      }
+    }
 
     resultContainer.style.display = "block";
 
@@ -397,7 +498,11 @@ document.addEventListener("DOMContentLoaded", () => {
     progressText.textContent = `Enviando ${file.name}...`;
 
     try {
-      const res = await api.uploadBatch(file);
+      let selectedBatchLayer = batchLayerSelect ? batchLayerSelect.value : null;
+      if (selectedBatchLayer === "__primary__") {
+        selectedBatchLayer = "primary";
+      }
+      const res = await api.uploadBatch(file, selectedBatchLayer || null);
       pollBatchStatus(res.job_id);
     } catch (err) {
       alert(`Falha no envio do lote: ${err.message}`);

@@ -1,5 +1,5 @@
 import math
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union, Set
 from shapely.geometry import shape, Point, Polygon, MultiPolygon
 from shapely.strtree import STRtree
 from shapely.ops import nearest_points
@@ -12,6 +12,13 @@ from app.models.schemas import (
     ViabilityResponse
 )
 from app.config import TOLERANCIA_BORDA_METROS, MAX_DISTANCIA_ANALISE_METROS
+
+TECH_PRIORITY = {
+    "Fibra GPON": 4,
+    "Fibra Ponto a Ponto": 3,
+    "Rede Neutra": 2,
+    "Rádio 5.8GHz": 1,
+}
 
 class SpatialEngine:
     """Motor Espacial de Alta Performance baseado em Shapely e STRtree."""
@@ -89,9 +96,58 @@ class SpatialEngine:
         else:
             self.tree = None
 
-    def check_viability(self, latitude: float, longitude: float) -> ViabilityResponse:
+    def update_geometries(self, features_with_meta: List[Dict[str, Any]]):
+        """
+        Atualiza o índice espacial R-Tree com uma lista de features GeoJSON e seus metadados.
+        Reconstrói o STRtree em memória para máxima velocidade.
+        """
+        self.geometries = []
+        self.metadata_list = []
+
+        for item in features_with_meta:
+            try:
+                geom_dict = item.get("geometry")
+                if not geom_dict:
+                    continue
+
+                geom_obj = shape(geom_dict)
+                # Garantir que é Polygon ou MultiPolygon válido
+                if not geom_obj.is_valid:
+                    geom_obj = geom_obj.buffer(0)
+
+                if geom_obj.is_empty:
+                    continue
+
+                self.geometries.append(geom_obj)
+                self.metadata_list.append({
+                    "layer_id": item.get("layer_id"),
+                    "layer_name": item.get("layer_name"),
+                    "polygon_id": item.get("polygon_id"),
+                    "polygon_name": item.get("polygon_name"),
+                    "region": item.get("region"),
+                    "pop": item.get("pop"),
+                    "technology": item.get("technology", "Fibra GPON"),
+                    "properties": item.get("properties", {})
+                })
+            except Exception as e:
+                continue
+
+        if self.geometries:
+            self.tree = STRtree(self.geometries)
+        else:
+            self.tree = None
+
+    def check_viability(
+        self,
+        latitude: float,
+        longitude: float,
+        target_layer_ids: Optional[Union[List[str], set]] = None,
+        primary_layer_ids: Optional[Union[List[str], Set[str]]] = None
+    ) -> ViabilityResponse:
         """
         Verifica a viabilidade técnica de um ponto (Lat/Long).
+        Permite filtrar opcionalmente por um conjunto de IDs de camadas (target_layer_ids).
+        Trata sobreposição de múltiplos polígonos, priorizando camadas primárias e tecnologias mais nobres.
         Retorna ViabilityResponse detalhando se o ponto está dentro, na borda ou distante.
         """
         coord = Coordinates(latitude=latitude, longitude=longitude)
@@ -104,18 +160,45 @@ class SpatialEngine:
                 message="Nenhuma mancha de cobertura geográfica cadastrada ou ativa no sistema."
             )
 
+        # Determinar conjunto de camadas primárias se não fornecido
+        if primary_layer_ids is None:
+            try:
+                from app.services.layer_manager import layer_manager
+                primary_layer_set = set(layer_manager.get_primary_layer_ids())
+            except Exception:
+                primary_layer_set = set()
+        else:
+            primary_layer_set = set(primary_layer_ids)
+
+        # Converter para set para checagem O(1) se fornecido
+        target_set = set(target_layer_ids) if target_layer_ids is not None else None
+
+        if target_set is not None:
+            has_matching_geoms = any(m["layer_id"] in target_set for m in self.metadata_list)
+            if not has_matching_geoms:
+                return ViabilityResponse(
+                    status=ViabilityStatus.INVIAVEL,
+                    location=coord,
+                    distance_to_nearest_meters=0.0,
+                    message="Nenhuma mancha ativa encontrada para o(s) mapa(s) especificado(s)."
+                )
+
         point = Point(longitude, latitude)
 
         # 1. Busca por candidatos via R-Tree (STRtree)
         # query() retorna índices de geometrias cujas bounding-boxes interceptam o ponto
         candidate_indices = self.tree.query(point)
 
-        # 2. Verificação exata Point-in-Polygon
+        # 2. Verificação exata Point-in-Polygon (coleta todas as manchas que cobrem o ponto)
+        all_matches: List[PolygonMatchInfo] = []
         for idx in candidate_indices:
+            meta = self.metadata_list[idx]
+            if target_set is not None and meta["layer_id"] not in target_set:
+                continue
+
             geom = self.geometries[idx]
             # contains ou touches (na borda)
             if geom.contains(point) or geom.touches(point):
-                meta = self.metadata_list[idx]
                 matched = PolygonMatchInfo(
                     layer_id=meta["layer_id"],
                     layer_name=meta["layer_name"],
@@ -126,26 +209,53 @@ class SpatialEngine:
                     technology=meta["technology"],
                     properties=meta["properties"]
                 )
-                return ViabilityResponse(
-                    status=ViabilityStatus.VIAVEL,
-                    location=coord,
-                    matched_polygon=matched,
-                    distance_to_nearest_meters=0.0,
-                    message=f"Viabilidade Confirmada! Atendido pela mancha '{matched.polygon_name}' via {matched.technology} ({matched.pop})."
-                )
+                all_matches.append(matched)
 
-        # 3. Ponto fora das manchas: calcular a menor distância real em metros
+        if all_matches:
+            # Ordenar os polígonos sobrepostos por prioridade:
+            # 1. Pertence à camada principal (is_primary)
+            # 2. Tecnologia (Fibra GPON > P2P > Rede Neutra > Rádio)
+            # 3. Nome da camada / polígono
+            def match_sort_key(m: PolygonMatchInfo):
+                is_prim = 1 if m.layer_id in primary_layer_set else 0
+                tech_score = TECH_PRIORITY.get(m.technology, 0)
+                return (is_prim, tech_score, m.layer_name or "", m.polygon_name or "")
+
+            all_matches.sort(key=match_sort_key, reverse=True)
+            best_match = all_matches[0]
+
+            if len(all_matches) > 1:
+                other_names = [f"'{m.polygon_name}' ({m.technology})" for m in all_matches[1:]]
+                overlap_text = f" (Sobreposição: coberto também por {', '.join(other_names)})"
+                msg = f"Viabilidade Confirmada! Atendido principalmente pela mancha '{best_match.polygon_name}' via {best_match.technology} ({best_match.pop}).{overlap_text}"
+            else:
+                msg = f"Viabilidade Confirmada! Atendido pela mancha '{best_match.polygon_name}' via {best_match.technology} ({best_match.pop})."
+
+            return ViabilityResponse(
+                status=ViabilityStatus.VIAVEL,
+                location=coord,
+                matched_polygon=best_match,
+                all_matched_polygons=all_matches,
+                distance_to_nearest_meters=0.0,
+                message=msg
+            )
+
+        # 3. Ponto fora das manchas: calcular a menor distância real em metros apenas considerando as camadas alvo
         nearest_distance_meters = float("inf")
         nearest_meta = None
 
         for idx, geom in enumerate(self.geometries):
+            meta = self.metadata_list[idx]
+            if target_set is not None and meta["layer_id"] not in target_set:
+                continue
+
             # Encontra o ponto mais próximo na borda da geometria
             p1, p2 = nearest_points(geom, point)
             # p1 é o ponto na geometria, p2 é o ponto pesquisado
             dist_m = self._haversine_distance(p1.x, p1.y, p2.x, p2.y)
             if dist_m < nearest_distance_meters:
                 nearest_distance_meters = dist_m
-                nearest_meta = self.metadata_list[idx]
+                nearest_meta = meta
 
         # 4. Avaliar tolerância de borda e raio de extensão de rede
         nearest_distance_meters = round(nearest_distance_meters, 1)
@@ -166,6 +276,7 @@ class SpatialEngine:
                 status=ViabilityStatus.VIAVEL,
                 location=coord,
                 matched_polygon=matched,
+                all_matched_polygons=[matched],
                 distance_to_nearest_meters=nearest_distance_meters,
                 message=f"Viabilidade Confirmada (na borda da mancha a {nearest_distance_meters}m). Atendido por {matched.technology} ({matched.pop})."
             )
@@ -186,6 +297,7 @@ class SpatialEngine:
                 status=ViabilityStatus.EM_ANALISE,
                 location=coord,
                 matched_polygon=matched,
+                all_matched_polygons=[matched],
                 distance_to_nearest_meters=nearest_distance_meters,
                 message=f"Em Análise Técnica! Endereço a {nearest_distance_meters}m da mancha mais próxima ({matched.polygon_name} - {matched.pop}). Viável mediante extensão de rede."
             )

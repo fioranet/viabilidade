@@ -622,6 +622,39 @@ input:checked + .slider:before {
   border-color: #ef4444;
 }
 
+.btn-star {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: #64748b;
+  padding: 5px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.btn-star:hover {
+  border-color: #f59e0b;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.btn-star.active {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: #f59e0b;
+  color: #fbbf24;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+}
+
+.btn-star.active i {
+  color: #fbbf24;
+}
+
 .pop-card {
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);

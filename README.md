@@ -204,20 +204,28 @@ O projeto está 100% pronto para deploy no **Easypanel** utilizando o `Dockerfil
 
 ---
 
-## 🔌 8. Integração com o Site da Nuvv (API REST)
+## 🔌 8. Integração com APIs e Sistemas Externos (API REST)
 
-Em vez de acoplar a lógica pesada de GIS dentro do site institucional da Nuvv (o que tornaria o site mais lento e difícil de manter), a arquitetura recomendada é manter este serviço como um **microsserviço independente (API Headless)**.
+O sistema opera como um microsserviço independente (API Headless), permitindo que sites institucionais, CRMs e bots de atendimento consultem a viabilidade em tempo real.
 
-### Vantagens dessa abordagem:
-- **Zero impacto na velocidade do site:** O motor geoespacial e geocodificador rodam isolados no seu container.
-- **Manutenção centralizada:** Quando o time de engenharia adicionar novas manchas ou POPs na interface de gestão, o site da Nuvv já passa a consultar a base atualizada em tempo real sem precisar de novo deploy no site.
-- **Segurança e Rate Limit:** Protege as requisições e caches sem expor chaves ou estruturas internas.
+### Seleção de Mapa / Camadas em Uso na Chamada da API
 
-### Exemplo de Chamada no Frontend do Site da Nuvv (JavaScript / Fetch):
+Você pode restringir a verificação para **mapas ou regiões específicas** (por exemplo, um serviço residencial comercializado apenas em Suzano e Poá, sem consultar outras cidades ou redes corporativas).
+
+Formatos aceitos no payload:
+- **Array de nomes/IDs:** `"layers": ["suzano", "poa"]` ou `["Suzano", "Poá"]`
+- **String única:** `"layer": "suzano"`
+- **String separada por vírgula:** `"layers": "suzano, poa"`
+- **Omissão do parâmetro:** Caso omitido, a consulta avalia **todas as manchas ativas** do sistema.
+
+> [!NOTE]
+> A resolução de nomes é **insensível a maiúsculas/minúsculas e acentos** (ex: `"poa"` encontra automaticamente a camada `"poá"`). Caso informe uma camada inexistente, a API retorna `HTTP 400 Bad Request` listando as camadas disponíveis.
+
+### Exemplo de Chamada no Frontend (JavaScript / Fetch):
 
 ```javascript
-// Exemplo de integração no formulário "Consulte sua Cobertura" do site da Nuvv:
-async function consultarViabilidadeNuvv(cepOuEndereco, numero) {
+// Exemplo: Consultar viabilidade residencial apenas para Suzano e Poá:
+async function consultarViabilidadeResidencial(cepOuEndereco, numero) {
   const API_URL = "https://viabilidade.nuvv.com.br/api/viability/check";
 
   try {
@@ -226,25 +234,71 @@ async function consultarViabilidadeNuvv(cepOuEndereco, numero) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         query: cepOuEndereco,
-        number: numero || null
+        number: numero || null,
+        layers: ["suzano", "poa"] // 🎯 Restringe a consulta às áreas residenciais de Suzano e Poá
       })
     });
 
     const data = await response.json();
 
     if (data.status === "VIAVEL") {
-      // Exibir feedback positivo e abrir planos disponíveis
-      alert(`Parabéns! Temos cobertura para você via ${data.matched_polygon.technology}!`);
+      // Exibir feedback positivo e abrir planos residenciais disponíveis
+      alert(`Parabéns! Temos cobertura para você em ${data.matched_polygon.region} via ${data.matched_polygon.technology}!`);
     } else if (data.status === "EM_ANALISE") {
-      // Oferecer contato com consultor comercial (estudo de viabilidade)
-      alert(`Estamos a poucos metros do seu endereço! Envie seus dados para análise técnica de expansão.`);
+      // Oferecer contato com consultor comercial (estudo de viabilidade a poucos metros)
+      alert(`Estamos a apenas ${data.distance_to_nearest_meters}m da sua residência! Envie seus dados para análise técnica.`);
     } else {
       // Inviável: Capturar lead para lista de espera
-      alert(`Ainda não chegamos no seu endereço. Cadastre seu e-mail para ser avisado quando chegarmos!`);
+      alert(`Ainda não chegamos no seu endereço para este serviço residencial.`);
     }
   } catch (error) {
     console.error("Erro ao checar viabilidade:", error);
   }
 }
 ```
+
+### Exemplo via cURL:
+
+```bash
+curl -X POST "http://localhost:8000/api/viability/check" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Rua General Francisco Glicério, 1000, Suzano",
+    "layers": ["suzano", "poa"]
+  }'
+```
+
+### Exemplo de Resposta JSON:
+
+```json
+{
+  "status": "VIAVEL",
+  "input_query": "Rua General Francisco Glicério, 1000, Suzano",
+  "location": {
+    "latitude": -23.5416,
+    "longitude": -46.3147
+  },
+  "display_name": "Rua General Francisco Glicério, Suzano, SP",
+  "geocoding_source": "nominatim",
+  "matched_polygon": {
+    "layer_id": "suzano",
+    "layer_name": "Suzano",
+    "polygon_id": "0",
+    "polygon_name": "SPSZN002H",
+    "region": "SPSZN002H",
+    "pop": "POP Suzano Centro",
+    "technology": "Rede Neutra",
+    "properties": {
+      "status": "Existente"
+    }
+  },
+  "distance_to_nearest_meters": 0.0,
+  "consulted_layers": [
+    "Suzano",
+    "Poá"
+  ],
+  "message": "Viabilidade Confirmada! Atendido pela mancha 'SPSZN002H' via Rede Neutra (POP Suzano Centro)."
+}
+```
+
 

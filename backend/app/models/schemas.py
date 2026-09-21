@@ -1,6 +1,6 @@
 from enum import Enum
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any, List, Union
+from pydantic import BaseModel, Field, field_validator
 
 class ViabilityStatus(str, Enum):
     VIAVEL = "VIAVEL"
@@ -34,6 +34,37 @@ class ViabilityQueryRequest(BaseModel):
     number: Optional[str] = Field(None, description="Número opcional do imóvel para geocodificação de alta precisão")
     latitude: Optional[float] = Field(None, description="Latitude opcional para consulta direta")
     longitude: Optional[float] = Field(None, description="Longitude opcional para consulta direta")
+    layers: Optional[Union[List[str], str]] = Field(
+        None,
+        description="Lista opcional de IDs ou nomes de mapas/camadas a serem consultados. Ex: ['suzano', 'poá'] ou 'suzano, poa'"
+    )
+    layer: Optional[str] = Field(
+        None,
+        description="ID ou nome de camada/mapa único para consulta. Ex: 'suzano'"
+    )
+
+    @field_validator("layers", mode="before")
+    @classmethod
+    def parse_layers(cls, v):
+        if isinstance(v, str):
+            parts = [p.strip() for p in v.split(",") if p.strip()]
+            return parts if parts else None
+        return v
+
+    def get_requested_layers(self) -> Optional[List[str]]:
+        """Retorna a lista unificada de camadas solicitadas, ou None se nenhuma foi especificada."""
+        result = []
+        if isinstance(self.layers, list):
+            result.extend([l.strip() for l in self.layers if isinstance(l, str) and l.strip()])
+        elif isinstance(self.layers, str) and self.layers.strip():
+            result.extend([p.strip() for p in self.layers.split(",") if p.strip()])
+
+        if self.layer and self.layer.strip():
+            l_val = self.layer.strip()
+            if l_val not in result:
+                result.append(l_val)
+
+        return result if result else None
 
 class ViabilityResponse(BaseModel):
     status: ViabilityStatus
@@ -42,7 +73,9 @@ class ViabilityResponse(BaseModel):
     display_name: Optional[str] = None
     geocoding_source: Optional[str] = None
     matched_polygon: Optional[PolygonMatchInfo] = None
+    all_matched_polygons: Optional[List[PolygonMatchInfo]] = Field(None, description="Lista de todos os polígonos sobrepostos que cobrem o ponto")
     distance_to_nearest_meters: float = 0.0
+    consulted_layers: Optional[List[str]] = Field(None, description="Lista de camadas consideradas na verificação")
     message: str
 
 class BatchJobStatus(BaseModel):
@@ -68,6 +101,7 @@ class LayerMetadata(BaseModel):
     color: str
     polygon_count: int
     enabled: bool = True
+    is_primary: bool = False
     pop_id: Optional[str] = None
     pop_name: Optional[str] = None
 

@@ -3,8 +3,9 @@ const API_BASE = ""; // Caminho relativo ao mesmo host da API FastAPI
 export const api = {
   /**
    * Consulta a viabilidade técnica de um endereço, CEP ou coordenadas.
+   * Suporta parâmetro opcional 'layers' para restringir a consulta a mapas específicos.
    */
-  async checkViability(query, number = null, lat = null, lon = null) {
+  async checkViability(query, number = null, lat = null, lon = null, layers = null) {
     const payload = {};
     if (lat !== null && lon !== null) {
       payload.latitude = parseFloat(lat);
@@ -14,6 +15,10 @@ export const api = {
       if (number && number.trim()) {
         payload.number = number.trim();
       }
+    }
+
+    if (layers) {
+      payload.layers = layers;
     }
 
     const res = await fetch(`${API_BASE}/api/viability/check`, {
@@ -56,6 +61,17 @@ export const api = {
       method: "POST"
     });
     if (!res.ok) throw new Error("Falha ao alternar status da camada.");
+    return await res.json();
+  },
+
+  /**
+   * Marca ou desmarca uma camada como principal/padrão do sistema.
+   */
+  async toggleLayerPrimary(layerId) {
+    const res = await fetch(`${API_BASE}/api/layers/${layerId}/primary`, {
+      method: "POST"
+    });
+    if (!res.ok) throw new Error("Falha ao alternar status principal da camada.");
     return await res.json();
   },
 
@@ -124,10 +140,14 @@ export const api = {
 
   /**
    * Envia arquivo CSV ou XLSX para processamento em lote.
+   * Suporta parâmetro opcional 'layers' para filtrar manchas no processamento.
    */
-  async uploadBatch(file) {
+  async uploadBatch(file, layers = null) {
     const formData = new FormData();
     formData.append("file", file);
+    if (layers) {
+      formData.append("layers", Array.isArray(layers) ? layers.join(",") : layers);
+    }
 
     const res = await fetch(`${API_BASE}/api/batch/upload`, {
       method: "POST",

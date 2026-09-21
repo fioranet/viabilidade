@@ -1,7 +1,7 @@
 import uuid
 import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import pandas as pd
 
 from app.config import UPLOADS_DIR
@@ -30,7 +30,7 @@ class BatchProcessor:
         self.jobs[job_id] = status
         return job_id
 
-    async def execute_batch(self, job_id: str, file_path: Path):
+    async def execute_batch(self, job_id: str, file_path: Path, target_layer_ids: Optional[List[str]] = None):
         job = self.jobs.get(job_id)
         if not job:
             return
@@ -152,7 +152,7 @@ class BatchProcessor:
 
                 # 3. Validar no motor espacial se encontramos coordenadas
                 if lat_val is not None and lng_val is not None:
-                    viability = spatial_engine.check_viability(lat_val, lng_val)
+                    viability = spatial_engine.check_viability(lat_val, lng_val, target_layer_ids=target_layer_ids)
                     
                     if viability.status == ViabilityStatus.VIAVEL:
                         job.viable_count += 1

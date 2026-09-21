@@ -20,6 +20,16 @@ TECHNOLOGY_COLORS = {
 
 LAYERS_CONFIG_FILE = DATA_DIR / "layers_config.json"
 
+import unicodedata
+
+def normalize_layer_key(text: str) -> str:
+    """Remove acentos, converte para minúsculas e remove pontuações/espaços supérfluos."""
+    if not text:
+        return ""
+    text_nfkd = unicodedata.normalize("NFKD", text)
+    stripped = "".join([c for c in text_nfkd if not unicodedata.combining(c)])
+    return stripped.strip().lower().replace("-", "_").replace(" ", "_")
+
 class LayerManager:
     """Gerenciador de arquivos vetoriais de cobertura geográfica (GeoJSON e KMZ)."""
 
@@ -66,6 +76,65 @@ class LayerManager:
         spatial_engine.build_index()
         print(f"[LayerManager] {len(self.layers)} camadas carregadas e {len(spatial_engine.geometries)} polígonos ativos indexados no STRtree.")
 
+    def get_primary_layer_ids(self) -> List[str]:
+        """Retorna a lista de IDs das camadas marcadas como principais e ativas."""
+        return [lid for lid, m in self.metadata.items() if getattr(m, "is_primary", False) and m.enabled]
+
+    def resolve_layer_ids(self, requested_layers: List[str]) -> tuple[List[str], List[str]]:
+        """
+        Resolve uma lista de nomes ou IDs de camadas fornecidos pelo usuário/API.
+        Tolera ausência de acentos (ex: 'poa' -> 'poá'), maiúsculas/minúsculas e busca por nome ou ID.
+        Suporta 'primary', 'principal' ou '__primary__' para resolver para as camadas principais ativas.
+        Retorna (resolved_layer_ids, not_found_inputs).
+        """
+        resolved: List[str] = []
+        not_found: List[str] = []
+
+        if not requested_layers:
+            return resolved, not_found
+
+        for item in requested_layers:
+            if not item or not str(item).strip():
+                continue
+            item_clean = str(item).strip()
+            item_norm = normalize_layer_key(item_clean)
+
+            # Caso especial: 'primary' ou 'principal' ou '__primary__'
+            if item_norm in ["primary", "principal", "__primary__", "padrao", "default"]:
+                primaries = self.get_primary_layer_ids()
+                if primaries:
+                    for pid in primaries:
+                        if pid not in resolved:
+                            resolved.append(pid)
+                else:
+                    # Se não houver principais marcadas, recorre às ativas
+                    for lid, meta in self.metadata.items():
+                        if meta.enabled and lid not in resolved:
+                            resolved.append(lid)
+                continue
+
+            matched_id = None
+            # 1. Busca exata por ID ou Nome
+            for lid, meta in self.metadata.items():
+                if lid == item_clean or meta.name == item_clean:
+                    matched_id = lid
+                    break
+
+            # 2. Busca normalizada (sem acento, minúsculas, underscores)
+            if not matched_id:
+                for lid, meta in self.metadata.items():
+                    if normalize_layer_key(lid) == item_norm or normalize_layer_key(meta.name) == item_norm:
+                        matched_id = lid
+                        break
+
+            if matched_id:
+                if matched_id not in resolved:
+                    resolved.append(matched_id)
+            else:
+                not_found.append(item_clean)
+
+        return resolved, not_found
+
     def _load_single_file(self, file_path: Path):
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -78,6 +147,7 @@ class LayerManager:
         tech = cfg.get("technology") or data.get("technology") or "Fibra GPON"
         color = data.get("color") or TECHNOLOGY_COLORS.get(tech, "#10b981")
         enabled = cfg.get("enabled", True)
+        is_primary = cfg.get("is_primary", False)
         pop_id = cfg.get("pop_id")
         pop_name = cfg.get("pop_name")
 
@@ -99,6 +169,7 @@ class LayerManager:
             color=color,
             polygon_count=polygon_count,
             enabled=enabled,
+            is_primary=is_primary,
             pop_id=pop_id,
             pop_name=pop_name
         )
@@ -133,6 +204,21 @@ class LayerManager:
         # Recarregar motor espacial para refletir a ativação/desativação imediata
         self.load_all_layers()
         return self.metadata.get(layer_id)
+
+    def toggle_primary(self, layer_id: str) -> Optional[LayerMetadata]:
+        """Marca ou desmarca uma camada como principal/padrão do sistema."""
+        meta = self.metadata.get(layer_id)
+        if not meta:
+            return None
+
+        new_status = not getattr(meta, "is_primary", False)
+        meta.is_primary = new_status
+
+        if layer_id not in self.config:
+            self.config[layer_id] = {}
+        self.config[layer_id]["is_primary"] = new_status
+        self._save_config()
+        return meta
 
     def delete_layer(self, layer_id: str) -> bool:
         """Exclui o arquivo da camada e atualiza o motor espacial."""
