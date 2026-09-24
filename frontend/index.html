@@ -135,10 +135,32 @@
     <!-- ABA 2: PROCESSAMENTO EM LOTE (BULK CHECK) -->
     <div id="tab-batch" class="tab-content">
       <div style="margin-bottom: 1rem;">
-        <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 0.35rem;">Validação em Massa (Lote)</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+          <h3 style="font-size: 0.95rem; font-weight: 700; margin: 0;">Validação em Massa (Lote)</h3>
+          <div id="server-load-badge" class="server-badge normal" title="Monitoramento de Recursos do Servidor">
+            <span class="status-dot"></span>
+            <span id="server-load-text">Servidor: Normal</span>
+          </div>
+        </div>
         <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
-          Envie sua planilha com colunas de Endereço, CEP ou Lat/Long. O sistema processará assincronamente com controle de rate limit.
+          Envie sua planilha com colunas de Endereço, CEP ou Lat/Long. O sistema conta com proteção anti-sobrecarga, fila de espera e controle de taxa.
         </p>
+      </div>
+
+      <!-- Card de Status do Sistema & Proteção -->
+      <div class="system-status-card" id="system-status-card">
+        <div class="sys-item">
+          <span class="sys-lbl">CPU / RAM</span>
+          <span class="sys-val" id="sys-cpu-ram">-- / --</span>
+        </div>
+        <div class="sys-item">
+          <span class="sys-lbl">Fila de Lotes</span>
+          <span class="sys-val" id="sys-queue-jobs">0 ativos</span>
+        </div>
+        <div class="sys-item">
+          <span class="sys-lbl">Proteção</span>
+          <span class="sys-val text-success"><i class="fa-solid fa-shield-halved"></i> Ativa</span>
+        </div>
       </div>
 
       <div class="input-group" style="margin-bottom: 0.85rem;">
@@ -153,7 +175,7 @@
       <div id="dropzone" class="dropzone">
         <i class="fa-solid fa-cloud-arrow-up dropzone-icon"></i>
         <p><strong>Clique para selecionar</strong> ou arraste o arquivo aqui</p>
-        <span>Formatos aceitos: .CSV ou .XLSX</span>
+        <span>Formatos aceitos: .CSV ou .XLSX (máx 10.000 linhas)</span>
         <input type="file" id="file-batch-input" accept=".csv, .xlsx, .xls" style="display: none;" />
       </div>
 
@@ -163,16 +185,49 @@
         </a>
       </div>
 
-      <!-- Barra de Progresso e Estatísticas -->
+      <!-- Barra de Progresso e Estatísticas em Tempo Real -->
       <div id="progress-container" class="progress-container">
-        <div class="progress-header">
-          <span id="progress-text">Processando registros...</span>
-          <span id="progress-percent" style="font-weight: 700; color: #fff;">0%</span>
+        <!-- Header de Status com Badge e Porcentagem -->
+        <div class="batch-status-banner">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span id="batch-job-badge" class="batch-state-pill processing">
+              <span class="spinner-mini"></span> Processando
+            </span>
+            <span id="batch-queue-info" style="font-size: 0.75rem; color: #94a3b8; display: none;"></span>
+          </div>
+          <span id="progress-percent" style="font-weight: 700; color: #fff; font-size: 1.05rem;">0%</span>
         </div>
+
+        <!-- Descrição do Estágio Atual -->
+        <div id="progress-text" class="batch-stage-text">Iniciando processamento...</div>
+        <div id="batch-current-item" class="batch-item-preview" style="display: none;"></div>
+
+        <!-- Barra de Progresso com Gradiente -->
         <div class="progress-bar-bg">
           <div id="progress-bar-fill" class="progress-bar-fill"></div>
         </div>
 
+        <!-- Grid de Métricas de Performance e ETA -->
+        <div class="batch-stats-grid">
+          <div class="stat-pill">
+            <span class="stat-lbl"><i class="fa-solid fa-bolt"></i> Velocidade</span>
+            <span class="stat-val" id="stat-speed">0 lin/s</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-lbl"><i class="fa-solid fa-stopwatch"></i> Decorrido</span>
+            <span class="stat-val" id="stat-elapsed">00:00</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-lbl"><i class="fa-solid fa-hourglass-half"></i> Restante (ETA)</span>
+            <span class="stat-val" id="stat-eta">--:--</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-lbl"><i class="fa-solid fa-list-check"></i> Processados</span>
+            <span class="stat-val" id="stat-rows">0 / 0</span>
+          </div>
+        </div>
+
+        <!-- Contadores de Viabilidade (4 cards) -->
         <div class="batch-counters">
           <div class="batch-box">
             <div id="count-viable" class="number" style="color: var(--color-viable);">0</div>
@@ -186,11 +241,21 @@
             <div id="count-unviable" class="number" style="color: var(--color-unviable);">0</div>
             <div class="lbl">Inviáveis</div>
           </div>
+          <div class="batch-box">
+            <div id="count-error" class="number" style="color: #f97316;">0</div>
+            <div class="lbl">Falhas CEP</div>
+          </div>
         </div>
 
-        <a id="batch-download-btn" class="btn-primary" style="margin-top: 1.25rem; text-decoration: none; display: none;" download>
-          <i class="fa-solid fa-file-arrow-down"></i> Baixar Relatório Enriquecido (.CSV)
-        </a>
+        <!-- Ações do Lote: Cancelar e Baixar CSV -->
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+          <button id="batch-cancel-btn" type="button" class="btn-cancel-batch">
+            <i class="fa-solid fa-ban"></i> Interromper Lote
+          </button>
+          <a id="batch-download-btn" class="btn-primary" style="margin-top: 0; text-decoration: none; display: none; flex: 1;" download>
+            <i class="fa-solid fa-file-arrow-down"></i> Baixar Relatório (.CSV)
+          </a>
+        </div>
       </div>
     </div>
 

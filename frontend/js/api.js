@@ -168,5 +168,25 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/batch/status/${jobId}`);
     if (!res.ok) throw new Error("Falha ao verificar status do lote.");
     return await res.json();
+  },
+
+  /**
+   * Cancela um processamento em lote.
+   */
+  async cancelBatch(jobId) {
+    const res = await fetch(`${API_BASE}/api/batch/cancel/${jobId}`, {
+      method: "POST"
+    });
+    if (!res.ok) throw new Error("Falha ao cancelar o processamento em lote.");
+    return await res.json();
+  },
+
+  /**
+   * Obtém métricas e status de carregamento do servidor em tempo real.
+   */
+  async getSystemStatus() {
+    const res = await fetch(`${API_BASE}/api/system/status`);
+    if (!res.ok) throw new Error("Falha ao obter status do sistema.");
+    return await res.json();
   }
 };

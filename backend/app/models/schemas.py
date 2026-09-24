@@ -80,7 +80,8 @@ class ViabilityResponse(BaseModel):
 
 class BatchJobStatus(BaseModel):
     job_id: str
-    status: str # "PENDING", "PROCESSING", "COMPLETED", "FAILED"
+    status: str # "PENDING", "QUEUED", "PROCESSING", "COMPLETED", "CANCELLED", "FAILED"
+    queue_position: int = 0
     total_rows: int = 0
     processed_rows: int = 0
     viable_count: int = 0
@@ -88,10 +89,31 @@ class BatchJobStatus(BaseModel):
     unviable_count: int = 0
     error_count: int = 0
     progress_percentage: float = 0.0
+    processing_rate: float = 0.0 # Linhas por segundo
+    elapsed_seconds: float = 0.0
+    elapsed_time_formatted: str = "00:00"
+    estimated_remaining_seconds: Optional[float] = None
+    eta_formatted: str = "--:--"
+    current_stage: str = "Iniciando..."
+    current_item_preview: Optional[str] = None
+    server_load: str = "Normal"
+    cpu_percent: Optional[float] = None
+    memory_percent: Optional[float] = None
     created_at: str
     completed_at: Optional[str] = None
     download_csv_url: Optional[str] = None
     error_message: Optional[str] = None
+
+class SystemStatus(BaseModel):
+    status: str # "healthy", "warning", "busy"
+    server_load: str # "Normal", "Moderada", "Alta"
+    cpu_percent: Optional[float] = None
+    memory_percent: Optional[float] = None
+    memory_available_mb: Optional[float] = None
+    uptime_seconds: float = 0.0
+    active_batch_jobs: int = 0
+    queued_batch_jobs: int = 0
+    max_batch_rows: int = 10000
 
 class LayerMetadata(BaseModel):
     id: str

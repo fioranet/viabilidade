@@ -14,13 +14,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.config import LAYERS_DIR, UPLOADS_DIR, FRONTEND_DIR
+from app.config import LAYERS_DIR, UPLOADS_DIR, FRONTEND_DIR, MAX_BATCH_ROWS
 from app.models.schemas import (
     ViabilityQueryRequest,
     ViabilityResponse,
     ViabilityStatus,
     Coordinates,
     BatchJobStatus,
+    SystemStatus,
     LayerMetadata,
     POP,
     POPCreate
@@ -30,6 +31,7 @@ from app.services.geocoding import geocoding_service
 from app.services.layer_manager import layer_manager
 from app.services.pop_manager import pop_manager
 from app.services.batch_processor import batch_processor
+from app.services.system_monitor import system_monitor
 
 app = FastAPI(
     title="Sistema de Viabilidade Técnica Geográfica - ISP",
@@ -261,26 +263,66 @@ async def upload_batch(
             )
         target_layer_ids = resolved_ids
 
-    temp_path = UPLOADS_DIR / f"batch_input_{file.filename}"
+    file_prefix = os.urandom(4).hex()
+    temp_path = UPLOADS_DIR / f"batch_input_{file_prefix}_{file.filename}"
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     job_id = await batch_processor.start_batch_job(temp_path, file.filename)
     background_tasks.add_task(batch_processor.execute_batch, job_id, temp_path, target_layer_ids=target_layer_ids)
 
+    job = batch_processor.get_job(job_id)
     return {
         "job_id": job_id,
-        "message": "Arquivo recebido com sucesso. Processamento iniciado em segundo plano.",
+        "status": job.status if job else "PENDING",
+        "queue_position": job.queue_position if job else 0,
+        "message": "Arquivo recebido com sucesso. Processamento iniciado ou enfileirado com proteção de sobrecarga.",
         "status_url": f"/api/batch/status/{job_id}"
     }
 
 @app.get("/api/batch/status/{job_id}", response_model=BatchJobStatus, tags=["Processamento em Lote"])
 async def get_batch_status(job_id: str):
-    """Retorna o progresso atual do processamento em lote."""
+    """Retorna o progresso atual, taxa, tempo decorrido, ETA e status do processamento em lote."""
     job = batch_processor.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job de processamento não encontrado.")
     return job
+
+@app.post("/api/batch/cancel/{job_id}", tags=["Processamento em Lote"])
+async def cancel_batch(job_id: str):
+    """Interrompe e cancela um lote em execução ou remove da fila de espera."""
+    job = batch_processor.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job de processamento não encontrado.")
+
+    success = batch_processor.cancel_job(job_id)
+    if not success:
+        return {
+            "status": "ignored",
+            "message": f"O lote já está no status '{job.status}' e não pode ser cancelado."
+        }
+    return {
+        "status": "success",
+        "message": "Cancelamento solicitado com sucesso. O processamento foi interrompido e os dados parciais foram preservados."
+    }
+
+@app.get("/api/system/status", response_model=SystemStatus, tags=["Monitoramento e Sistema"])
+async def get_system_status():
+    """Retorna métricas em tempo real sobre nível de carregamento e saúde do servidor."""
+    active_jobs = batch_processor.get_active_jobs_count()
+    queued_jobs = batch_processor.get_queued_jobs_count()
+    metrics = system_monitor.get_metrics(active_jobs_count=active_jobs)
+    return SystemStatus(
+        status=metrics["status"],
+        server_load=metrics["server_load"],
+        cpu_percent=metrics["cpu_percent"],
+        memory_percent=metrics["memory_percent"],
+        memory_available_mb=metrics["memory_available_mb"],
+        uptime_seconds=metrics["uptime_seconds"],
+        active_batch_jobs=active_jobs,
+        queued_batch_jobs=queued_jobs,
+        max_batch_rows=MAX_BATCH_ROWS
+    )
 
 @app.get("/api/batch/download/{job_id}", tags=["Processamento em Lote"])
 async def download_batch_result(job_id: str):

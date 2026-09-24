@@ -28,7 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const metaRegion = document.getElementById("meta-region");
   const metaDistance = document.getElementById("meta-distance");
 
-  // Lote
+  // Lote e Monitoramento de Carga
   const dropzone = document.getElementById("dropzone");
   const fileBatchInput = document.getElementById("file-batch-input");
   const batchLayerSelect = document.getElementById("batch-layer-select");
@@ -39,7 +39,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const countViable = document.getElementById("count-viable");
   const countAnalysis = document.getElementById("count-analysis");
   const countUnviable = document.getElementById("count-unviable");
+  const countError = document.getElementById("count-error");
   const batchDownloadBtn = document.getElementById("batch-download-btn");
+  const batchCancelBtn = document.getElementById("batch-cancel-btn");
+  const batchJobBadge = document.getElementById("batch-job-badge");
+  const batchQueueInfo = document.getElementById("batch-queue-info");
+  const batchCurrentItem = document.getElementById("batch-current-item");
+  const statSpeed = document.getElementById("stat-speed");
+  const statElapsed = document.getElementById("stat-elapsed");
+  const statEta = document.getElementById("stat-eta");
+  const statRows = document.getElementById("stat-rows");
+  const serverLoadBadge = document.getElementById("server-load-badge");
+  const serverLoadText = document.getElementById("server-load-text");
+  const sysCpuRam = document.getElementById("sys-cpu-ram");
+  const sysQueueJobs = document.getElementById("sys-queue-jobs");
 
   // Camadas (Manchas)
   const layersListContainer = document.getElementById("layers-list-container");
@@ -463,8 +476,46 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // ==========================================
+  // MONITORAMENTO DO SERVIDOR & CARGA
+  // ==========================================
+  async function refreshSystemStatus() {
+    try {
+      const status = await api.getSystemStatus();
+      if (!status) return;
+
+      // Atualizar badge de carga
+      if (serverLoadBadge && serverLoadText) {
+        serverLoadBadge.className = `server-badge ${status.status === "healthy" ? "normal" : status.status === "warning" ? "warning" : "busy"}`;
+        serverLoadText.textContent = `Servidor: ${status.server_load}`;
+      }
+
+      // Atualizar card de CPU / RAM
+      if (sysCpuRam) {
+        const cpuStr = status.cpu_percent !== null && status.cpu_percent !== undefined ? `${status.cpu_percent}%` : "Ativo";
+        const memStr = status.memory_percent !== null && status.memory_percent !== undefined ? `${status.memory_percent}%` : "OK";
+        sysCpuRam.textContent = `${cpuStr} / ${memStr}`;
+      }
+
+      // Atualizar fila
+      if (sysQueueJobs) {
+        const total = status.active_batch_jobs || 0;
+        sysQueueJobs.textContent = `${total} lote(s) ativo(s)`;
+      }
+    } catch (e) {
+      console.warn("Monitoramento do sistema indisponível:", e);
+    }
+  }
+
+  // Monitorar carga a cada 4 segundos
+  setInterval(refreshSystemStatus, 4000);
+  refreshSystemStatus();
+
+  // ==========================================
   // PROCESSAMENTO EM LOTE (BULK CHECK)
   // ==========================================
+  let currentBatchJobId = null;
+  let batchPollInterval = null;
+
   dropzone.addEventListener("click", () => fileBatchInput.click());
 
   dropzone.addEventListener("dragover", (e) => {
@@ -490,12 +541,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  function setBatchBadge(type, label) {
+    if (!batchJobBadge) return;
+    batchJobBadge.className = `batch-state-pill ${type}`;
+    if (type === "processing" || type === "queued") {
+      batchJobBadge.innerHTML = `<span class="spinner-mini"></span> ${label}`;
+    } else {
+      batchJobBadge.textContent = label;
+    }
+  }
+
   async function handleBatchUpload(file) {
     progressContainer.style.display = "block";
     batchDownloadBtn.style.display = "none";
+    if (batchCancelBtn) {
+      batchCancelBtn.style.display = "inline-flex";
+      batchCancelBtn.disabled = false;
+      batchCancelBtn.innerHTML = `<i class="fa-solid fa-ban"></i> Interromper Lote`;
+    }
     progressBarFill.style.width = "0%";
     progressPercent.textContent = "0%";
-    progressText.textContent = `Enviando ${file.name}...`;
+    progressText.textContent = `Enviando arquivo ${file.name}...`;
+    if (batchCurrentItem) batchCurrentItem.style.display = "none";
+    if (batchQueueInfo) batchQueueInfo.style.display = "none";
+
+    setBatchBadge("processing", "Enviando");
 
     try {
       let selectedBatchLayer = batchLayerSelect ? batchLayerSelect.value : null;
@@ -503,7 +573,9 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedBatchLayer = "primary";
       }
       const res = await api.uploadBatch(file, selectedBatchLayer || null);
+      currentBatchJobId = res.job_id;
       pollBatchStatus(res.job_id);
+      refreshSystemStatus();
     } catch (err) {
       alert(`Falha no envio do lote: ${err.message}`);
       progressContainer.style.display = "none";
@@ -511,32 +583,102 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function pollBatchStatus(jobId) {
-    const interval = setInterval(async () => {
+    if (batchPollInterval) clearInterval(batchPollInterval);
+
+    batchPollInterval = setInterval(async () => {
       try {
         const job = await api.getBatchStatus(jobId);
 
+        // Barra de progresso e porcentagem
         progressBarFill.style.width = `${job.progress_percentage}%`;
         progressPercent.textContent = `${job.progress_percentage}%`;
-        progressText.textContent = `Processando linha ${job.processed_rows} de ${job.total_rows}...`;
 
+        // Descrição do estágio atual
+        progressText.textContent = job.current_stage || `Processando linha ${job.processed_rows} de ${job.total_rows}...`;
+
+        // Item preview
+        if (job.current_item_preview && job.status === "PROCESSING") {
+          batchCurrentItem.textContent = `Avaliando: ${job.current_item_preview}`;
+          batchCurrentItem.style.display = "block";
+        } else {
+          batchCurrentItem.style.display = "none";
+        }
+
+        // Estatísticas de velocidade e tempo
+        if (statSpeed) statSpeed.textContent = `${job.processing_rate || 0} lin/s`;
+        if (statElapsed) statElapsed.textContent = job.elapsed_time_formatted || "00:00";
+        if (statEta) statEta.textContent = job.eta_formatted || "--:--";
+        if (statRows) statRows.textContent = `${job.processed_rows} / ${job.total_rows}`;
+
+        // Contadores
         countViable.textContent = job.viable_count;
         countAnalysis.textContent = job.analysis_count;
         countUnviable.textContent = job.unviable_count;
+        if (countError) countError.textContent = job.error_count;
 
-        if (job.status === "COMPLETED") {
-          clearInterval(interval);
-          progressText.textContent = `Concluído com sucesso! (${job.total_rows} linhas analisadas)`;
+        // Fila & Estados
+        if (job.status === "QUEUED") {
+          setBatchBadge("queued", `Na Fila (${job.queue_position}º)`);
+          if (batchQueueInfo) {
+            batchQueueInfo.textContent = `Aguardando liberação de recursos do servidor`;
+            batchQueueInfo.style.display = "inline";
+          }
+        } else if (job.status === "PROCESSING") {
+          setBatchBadge("processing", "Processando");
+          if (batchQueueInfo) batchQueueInfo.style.display = "none";
+        } else if (job.status === "COMPLETED") {
+          clearInterval(batchPollInterval);
+          setBatchBadge("completed", "Concluído");
+          if (batchQueueInfo) batchQueueInfo.style.display = "none";
+          if (batchCancelBtn) batchCancelBtn.style.display = "none";
           batchDownloadBtn.href = job.download_csv_url;
-          batchDownloadBtn.style.display = "flex";
+          batchDownloadBtn.innerHTML = `<i class="fa-solid fa-file-arrow-down"></i> Baixar Relatório (.CSV)`;
+          batchDownloadBtn.style.display = "inline-flex";
+          refreshSystemStatus();
+        } else if (job.status === "CANCELLED") {
+          clearInterval(batchPollInterval);
+          setBatchBadge("cancelled", "Cancelado");
+          if (batchQueueInfo) batchQueueInfo.style.display = "none";
+          if (batchCancelBtn) batchCancelBtn.style.display = "none";
+          progressText.textContent = job.current_stage || "Processamento cancelado pelo usuário.";
+          if (job.download_csv_url) {
+            batchDownloadBtn.href = job.download_csv_url;
+            batchDownloadBtn.innerHTML = `<i class="fa-solid fa-file-arrow-down"></i> Baixar Dados Parciais (${job.processed_rows} linhas)`;
+            batchDownloadBtn.style.display = "inline-flex";
+          }
+          refreshSystemStatus();
         } else if (job.status === "FAILED") {
-          clearInterval(interval);
-          progressText.textContent = `Erro no processamento: ${job.error_message}`;
+          clearInterval(batchPollInterval);
+          setBatchBadge("failed", "Falha");
+          if (batchQueueInfo) batchQueueInfo.style.display = "none";
+          if (batchCancelBtn) batchCancelBtn.style.display = "none";
+          progressText.textContent = `Erro: ${job.error_message}`;
+          refreshSystemStatus();
         }
       } catch (err) {
-        clearInterval(interval);
-        console.error(err);
+        clearInterval(batchPollInterval);
+        console.error("Erro no polling de status:", err);
       }
-    }, 800);
+    }, 700);
+  }
+
+  // Cancelar processamento do lote
+  if (batchCancelBtn) {
+    batchCancelBtn.addEventListener("click", async () => {
+      if (!currentBatchJobId) return;
+      const ok = confirm("Deseja interromper o processamento deste lote? Os registros já verificados até o momento serão salvos na planilha.");
+      if (!ok) return;
+
+      batchCancelBtn.disabled = true;
+      batchCancelBtn.innerHTML = `<span class="spinner-mini"></span> Interrompendo...`;
+      try {
+        await api.cancelBatch(currentBatchJobId);
+      } catch (err) {
+        alert(`Erro ao solicitar cancelamento: ${err.message}`);
+        batchCancelBtn.disabled = false;
+        batchCancelBtn.innerHTML = `<i class="fa-solid fa-ban"></i> Interromper Lote`;
+      }
+    });
   }
 
   // ==========================================

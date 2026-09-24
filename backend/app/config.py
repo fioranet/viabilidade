@@ -36,3 +36,8 @@ NOMINATIM_MIN_INTERVAL_SECONDS = float(os.getenv("NOMINATIM_MIN_INTERVAL", "1.05
 # Distância máxima (em metros) para classificar como "EM_ANALISE" (potencial extensão de rede)
 TOLERANCIA_BORDA_METROS = float(os.getenv("TOLERANCIA_BORDA_METROS", "5.0"))
 MAX_DISTANCIA_ANALISE_METROS = float(os.getenv("MAX_DISTANCIA_ANALISE_METROS", "100.0"))
+
+# Configurações de Proteção do Processamento em Lote
+MAX_BATCH_ROWS = int(os.getenv("MAX_BATCH_ROWS", "10000"))
+BATCH_CHUNK_SIZE = int(os.getenv("BATCH_CHUNK_SIZE", "20"))
+BATCH_YIELD_INTERVAL = float(os.getenv("BATCH_YIELD_INTERVAL", "0.005"))
