@@ -102,6 +102,7 @@ class BatchJobStatus(BaseModel):
     created_at: str
     completed_at: Optional[str] = None
     download_csv_url: Optional[str] = None
+    download_kmz_url: Optional[str] = None
     error_message: Optional[str] = None
 
 class SystemStatus(BaseModel):

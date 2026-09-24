@@ -199,6 +199,7 @@ class BatchProcessor:
                                 return out_filename
                             await asyncio.to_thread(_save_partial)
                             job.download_csv_url = f"/api/batch/download/{job_id}"
+                            job.download_kmz_url = f"/api/batch/export-kmz/{job_id}"
                         return
 
                     # CEDER CONTROLE AO EVENT LOOP DO ASYNCIO
@@ -369,6 +370,7 @@ class BatchProcessor:
                 job.current_stage = f"Concluído com sucesso ({total_rows} registros analisados)!"
                 job.completed_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 job.download_csv_url = f"/api/batch/download/{job_id}"
+                job.download_kmz_url = f"/api/batch/export-kmz/{job_id}"
                 job.progress_percentage = 100.0
 
             except Exception as e:
@@ -380,6 +382,138 @@ class BatchProcessor:
             finally:
                 self._cancelled_jobs.discard(job_id)
                 self._update_queue_positions()
+
+    def get_batch_points(self, job_id: str, status_filter: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Lê o resultado do lote processado e retorna lista padronizada de pontos
+        para renderização no mapa e exportação KML/KMZ.
+        """
+        csv_path = UPLOADS_DIR / f"resultado_viabilidade_{job_id}.csv"
+        if not csv_path.exists():
+            return []
+
+        try:
+            try:
+                df = pd.read_csv(csv_path, sep=";", encoding="utf-8-sig")
+            except Exception:
+                df = pd.read_csv(csv_path, sep=None, engine="python", encoding="latin1")
+        except Exception as e:
+            print(f"[BatchProcessor] Erro ao carregar CSV do lote {job_id}: {e}")
+            return []
+
+        points = []
+        status_filter_set = set([s.strip().upper() for s in status_filter]) if status_filter else None
+
+        col_map = {str(col).strip().lower(): col for col in df.columns}
+        def get_val(row, *candidates):
+            for c in candidates:
+                for k in col_map:
+                    if c in k:
+                        v = row[col_map[k]]
+                        if pd.notna(v):
+                            s = str(v).strip()
+                            if s.lower() != "nan" and s != "":
+                                return s
+            return None
+
+        for idx, row in df.iterrows():
+            status_val = str(row.get("Viabilidade_Status", "")).strip().upper()
+            if not status_val or status_val == "NAN":
+                continue
+
+            if status_filter_set and status_val not in status_filter_set:
+                continue
+
+            # Latitude e Longitude
+            lat_val = None
+            lng_val = None
+            try:
+                raw_lat = row.get("Latitude_Utilizada")
+                raw_lng = row.get("Longitude_Utilizada")
+                if pd.notna(raw_lat) and pd.notna(raw_lng):
+                    lat_val = float(str(raw_lat).replace(",", "."))
+                    lng_val = float(str(raw_lng).replace(",", "."))
+            except (ValueError, TypeError):
+                pass
+
+            # Distância
+            dist_val = None
+            try:
+                raw_dist = row.get("Distancia_Borda_Metros")
+                if pd.notna(raw_dist):
+                    dist_val = float(str(raw_dist).replace(",", "."))
+            except (ValueError, TypeError):
+                pass
+
+            # Montar identificador amigável / endereço
+            logr = get_val(row, "logradouro", "rua", "endereco", "endereço", "street", "av", "avenida")
+            num = get_val(row, "numero", "número", "num", "number", "nº", "no")
+            bairro = get_val(row, "bairro", "district", "neighborhood")
+            cidade = get_val(row, "cidade", "city", "municipio", "município")
+            uf = get_val(row, "uf", "estado", "state")
+            cep = get_val(row, "cep", "postal")
+
+            addr_parts = []
+            if logr:
+                if num and num not in logr:
+                    addr_parts.append(f"{logr}, {num}")
+                else:
+                    addr_parts.append(logr)
+            elif cep:
+                addr_parts.append(f"CEP {cep}" + (f", nº {num}" if num else ""))
+
+            if bairro:
+                addr_parts.append(bairro)
+            if cidade:
+                addr_parts.append(f"{cidade} - {uf}" if uf else cidade)
+
+            full_addr = ", ".join(addr_parts) if addr_parts else f"Registro linha {idx + 1}"
+            title = (f"{logr}, {num}" if logr and num else logr) or (f"CEP {cep}" if cep else f"Linha {idx + 1}")
+
+            pt_obj = {
+                "id": f"pt_{job_id[:8]}_{idx + 1}",
+                "row_index": idx + 1,
+                "status": status_val,
+                "latitude": lat_val,
+                "longitude": lng_val,
+                "title": title,
+                "address": full_addr,
+                "distance_meters": dist_val,
+                "layer_name": str(row.get("Mancha_Atendimento", "N/A")),
+                "pop": str(row.get("POP_Estacao", "N/A")),
+                "technology": str(row.get("Tecnologia", "N/A")),
+                "source": str(row.get("Origem_Geometria", "N/A")),
+                "message": str(row.get("Mensagem_Tecnica", ""))
+            }
+            points.append(pt_obj)
+
+        return points
+
+    def export_batch_kmz(self, job_id: str, status_filter: Optional[List[str]] = None) -> Optional[Path]:
+        """
+        Gera o arquivo KMZ com os pontos mapeados do lote e formatação KML para o Google Earth.
+        """
+        from app.services.kmz_exporter import export_points_to_kmz
+
+        points = self.get_batch_points(job_id, status_filter=status_filter)
+        if not points:
+            return None
+
+        # Filtrar apenas pontos que possuem coordenadas válidas
+        geo_points = [p for p in points if p.get("latitude") is not None and p.get("longitude") is not None]
+        if not geo_points:
+            return None
+
+        filter_suffix = f"_{'_'.join(status_filter).lower()}" if status_filter else ""
+        kmz_filename = f"resultado_viabilidade_{job_id}{filter_suffix}.kmz"
+        kmz_path = UPLOADS_DIR / kmz_filename
+
+        title = f"Viabilidade Lote - Job {job_id[:8]}"
+        if status_filter:
+            title += f" ({', '.join(status_filter)})"
+
+        export_points_to_kmz(geo_points, kmz_path, title=title)
+        return kmz_path
 
 # Instância singleton global
 batch_processor = BatchProcessor()

@@ -256,6 +256,81 @@
             <i class="fa-solid fa-file-arrow-down"></i> Baixar Relatório (.CSV)
           </a>
         </div>
+
+        <!-- Painel de Mapeamento, Validação e Exportação KMZ do Lote -->
+        <div id="batch-map-panel" class="batch-map-panel" style="display: none; margin-top: 1.15rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.65rem;">
+            <div style="font-size: 0.85rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 0.4rem;">
+              <i class="fa-solid fa-map-location-dot" style="color: #3b82f6;"></i>
+              <span>Validação Geográfica no Mapa</span>
+            </div>
+            <span id="batch-points-loaded-count" style="font-size: 0.72rem; color: #94a3b8; font-weight: 600;"></span>
+          </div>
+
+          <!-- Botões de Ação no Mapa -->
+          <div style="display: flex; gap: 0.4rem; margin-bottom: 0.75rem;">
+            <button id="btn-toggle-batch-map" type="button" class="btn-primary" style="flex: 1.2; padding: 0.55rem 0.75rem; font-size: 0.82rem; background: linear-gradient(135deg, #2563eb 0%, #10b981 100%);">
+              <i class="fa-solid fa-layer-group"></i> <span id="btn-toggle-batch-map-text">Plotar no Mapa</span>
+            </button>
+            <button id="btn-zoom-batch-map" type="button" class="btn-secondary" style="padding: 0.55rem 0.75rem; font-size: 0.82rem;" title="Centralizar e ajustar zoom nos pontos do lote">
+              <i class="fa-solid fa-crosshairs"></i> Focar
+            </button>
+            <button id="btn-clear-batch-map" type="button" class="btn-secondary" style="padding: 0.55rem 0.65rem; font-size: 0.82rem;" title="Ocultar pontos do lote do mapa">
+              <i class="fa-solid fa-eye-slash"></i>
+            </button>
+          </div>
+
+          <!-- Filtros de Seleção de Exibição por Status (Cores e Contadores) -->
+          <div style="margin-bottom: 0.85rem;">
+            <div style="font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.35rem; font-weight: 600; text-transform: uppercase;">
+              Filtrar pontos exibidos no mapa:
+            </div>
+            <div class="batch-filter-group">
+              <label class="batch-filter-chip filter-viable" title="Exibir/Ocultar pontos Viáveis (Verde)">
+                <input type="checkbox" id="filter-map-viable" checked>
+                <span class="chip-color-dot" style="background-color: #10b981;"></span>
+                <span>Viáveis</span>
+                <strong id="badge-count-viable" class="chip-counter">0</strong>
+              </label>
+
+              <label class="batch-filter-chip filter-analysis highlight-analysis" title="Exibir/Ocultar pontos Em Análise (Amarelo - Atenção para Vistoria)">
+                <input type="checkbox" id="filter-map-analysis" checked>
+                <span class="chip-color-dot" style="background-color: #f59e0b;"></span>
+                <span>⭐ Em Análise</span>
+                <strong id="badge-count-analysis" class="chip-counter">0</strong>
+              </label>
+
+              <label class="batch-filter-chip filter-unviable" title="Exibir/Ocultar pontos Inviáveis (Vermelho)">
+                <input type="checkbox" id="filter-map-unviable" checked>
+                <span class="chip-color-dot" style="background-color: #ef4444;"></span>
+                <span>Inviáveis</span>
+                <strong id="badge-count-unviable" class="chip-counter">0</strong>
+              </label>
+            </div>
+          </div>
+
+          <!-- Bloco de Exportação de Dados -->
+          <div style="margin-top: 0.85rem; border-top: 1px dashed var(--border-color); padding-top: 0.75rem;">
+            <div style="font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.45rem; font-weight: 600; text-transform: uppercase;">
+              Exportação dos Resultados:
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+              <a id="batch-download-kmz-btn" class="btn-export-kmz" href="#" download>
+                <i class="fa-solid fa-earth-americas"></i>
+                <div style="flex: 1; text-align: left;">
+                  <span style="display: block; font-weight: 700; font-size: 0.82rem;">Exportar Pontos (.KMZ Google Earth)</span>
+                  <span style="display: block; font-size: 0.7rem; opacity: 0.85;">Pastas coloridas (Verde/Amarelo/Vermelho) e balões completos</span>
+                </div>
+                <i class="fa-solid fa-download"></i>
+              </a>
+
+              <a id="batch-download-kmz-analysis-btn" class="btn-export-kmz-sub" href="#" download>
+                <i class="fa-solid fa-filter" style="color: #f59e0b;"></i>
+                <span>Exportar apenas <strong>Em Análise (.KMZ)</strong> para validação/vistoria</span>
+              </a>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -381,9 +456,50 @@
 
   <!-- Mapa Leaflet Interativo -->
   <main id="map">
+    <!-- Barra Flutuante de Controle Rápido do Lote no Mapa -->
+    <div id="map-batch-toolbar" class="map-batch-toolbar" style="display: none;">
+      <div class="map-batch-toolbar-header">
+        <div style="display: flex; align-items: center; gap: 0.4rem;">
+          <span class="status-dot" style="background-color: #3b82f6;"></span>
+          <span style="font-weight: 700; font-size: 0.8rem; color: #fff;">Pontos do Lote</span>
+          <span id="map-batch-chip-total" class="map-toolbar-badge">0</span>
+        </div>
+        <button id="btn-map-batch-close" class="map-toolbar-close-btn" title="Ocultar pontos do lote">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="map-batch-toolbar-filters">
+        <label class="map-toolbar-check viable" title="Exibir/Ocultar Viáveis">
+          <input type="checkbox" id="map-quick-viable" checked>
+          <span class="map-dot" style="background: #10b981;"></span>
+          <span>Viáveis (<strong id="map-cnt-viable">0</strong>)</span>
+        </label>
+        <label class="map-toolbar-check analysis" title="Exibir/Ocultar Em Análise">
+          <input type="checkbox" id="map-quick-analysis" checked>
+          <span class="map-dot" style="background: #f59e0b;"></span>
+          <span>Em Análise (<strong id="map-cnt-analysis">0</strong>)</span>
+        </label>
+        <label class="map-toolbar-check unviable" title="Exibir/Ocultar Inviáveis">
+          <input type="checkbox" id="map-quick-unviable" checked>
+          <span class="map-dot" style="background: #ef4444;"></span>
+          <span>Inviáveis (<strong id="map-cnt-unviable">0</strong>)</span>
+        </label>
+      </div>
+
+      <div class="map-batch-toolbar-actions">
+        <button id="btn-map-quick-zoom" class="btn-map-quick" title="Ajustar zoom para todos os pontos">
+          <i class="fa-solid fa-crosshairs"></i> Enquadrar
+        </button>
+        <button id="btn-map-quick-focus-analysis" class="btn-map-quick highlight-btn" title="Focar especificamente nos pontos Em Análise">
+          <i class="fa-solid fa-star"></i> Focar Em Análise
+        </button>
+      </div>
+    </div>
+
     <!-- Legenda Flutuante -->
     <div class="map-legend">
-      <div class="legend-title">Legenda</div>
+      <div class="legend-title">Manchas de Cobertura</div>
       <div class="legend-item">
         <div class="legend-color" style="background-color: #10b981;"></div>
         <span>Fibra GPON (Própria)</span>
@@ -399,6 +515,21 @@
       <div class="legend-item">
         <div class="legend-color" style="background-color: #6366f1; border-radius: 4px;"></div>
         <span>POP (Ponto de Presença)</span>
+      </div>
+
+      <div class="legend-divider"></div>
+      <div class="legend-title" style="margin-top: 0.35rem;">Resultados do Lote</div>
+      <div class="legend-item">
+        <div class="legend-color-circle" style="background-color: #10b981;"></div>
+        <span>Viável (No Perímetro)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color-circle" style="background-color: #f59e0b; border: 1.5px solid #fff;"></div>
+        <span style="font-weight: 600; color: #fbbf24;">Em Análise (Vistoria)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color-circle" style="background-color: #ef4444;"></div>
+        <span>Inviável (Fora de Mancha)</span>
       </div>
     </div>
   </main>

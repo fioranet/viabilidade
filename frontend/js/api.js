@@ -188,5 +188,23 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/system/status`);
     if (!res.ok) throw new Error("Falha ao obter status do sistema.");
     return await res.json();
+  },
+
+  /**
+   * Obtém os pontos analisados do lote para plotagem no mapa Leaflet.
+   */
+  async getBatchResults(jobId, status = null) {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    const res = await fetch(`${API_BASE}/api/batch/results/${jobId}${query}`);
+    if (!res.ok) throw new Error("Falha ao obter resultados mapeados do lote.");
+    return await res.json();
+  },
+
+  /**
+   * Retorna o link de download direto do arquivo KMZ (Google Earth).
+   */
+  getBatchKmzUrl(jobId, status = null) {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    return `${API_BASE}/api/batch/export-kmz/${jobId}${query}`;
   }
 };

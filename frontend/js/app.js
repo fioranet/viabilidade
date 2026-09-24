@@ -54,6 +54,38 @@ document.addEventListener("DOMContentLoaded", () => {
   const sysCpuRam = document.getElementById("sys-cpu-ram");
   const sysQueueJobs = document.getElementById("sys-queue-jobs");
 
+  // Mapeamento e Validação Geográfica do Lote
+  const batchMapPanel = document.getElementById("batch-map-panel");
+  const btnToggleBatchMap = document.getElementById("btn-toggle-batch-map");
+  const btnToggleBatchMapText = document.getElementById("btn-toggle-batch-map-text");
+  const btnZoomBatchMap = document.getElementById("btn-zoom-batch-map");
+  const btnClearBatchMap = document.getElementById("btn-clear-batch-map");
+  const batchPointsLoadedCount = document.getElementById("batch-points-loaded-count");
+  const filterMapViable = document.getElementById("filter-map-viable");
+  const filterMapAnalysis = document.getElementById("filter-map-analysis");
+  const filterMapUnviable = document.getElementById("filter-map-unviable");
+  const badgeCountViable = document.getElementById("badge-count-viable");
+  const badgeCountAnalysis = document.getElementById("badge-count-analysis");
+  const badgeCountUnviable = document.getElementById("badge-count-unviable");
+  const batchDownloadKmzBtn = document.getElementById("batch-download-kmz-btn");
+  const batchDownloadKmzAnalysisBtn = document.getElementById("batch-download-kmz-analysis-btn");
+
+  // Barra de ferramentas flutuante do lote no mapa
+  const mapBatchToolbar = document.getElementById("map-batch-toolbar");
+  const mapBatchChipTotal = document.getElementById("map-batch-chip-total");
+  const btnMapBatchClose = document.getElementById("btn-map-batch-close");
+  const mapQuickViable = document.getElementById("map-quick-viable");
+  const mapQuickAnalysis = document.getElementById("map-quick-analysis");
+  const mapQuickUnviable = document.getElementById("map-quick-unviable");
+  const mapCntViable = document.getElementById("map-cnt-viable");
+  const mapCntAnalysis = document.getElementById("map-cnt-analysis");
+  const mapCntUnviable = document.getElementById("map-cnt-unviable");
+  const btnMapQuickZoom = document.getElementById("btn-map-quick-zoom");
+  const btnMapQuickFocusAnalysis = document.getElementById("btn-map-quick-focus-analysis");
+
+  let currentBatchPoints = null;
+  let isBatchPlotted = false;
+
   // Camadas (Manchas)
   const layersListContainer = document.getElementById("layers-list-container");
   const layerUploadForm = document.getElementById("layer-upload-form");
@@ -554,6 +586,15 @@ document.addEventListener("DOMContentLoaded", () => {
   async function handleBatchUpload(file) {
     progressContainer.style.display = "block";
     batchDownloadBtn.style.display = "none";
+    if (batchMapPanel) batchMapPanel.style.display = "none";
+    if (mapBatchToolbar) mapBatchToolbar.style.display = "none";
+    mapManager.clearBatchPoints();
+    isBatchPlotted = false;
+    currentBatchPoints = null;
+    if (btnToggleBatchMap) {
+      btnToggleBatchMap.innerHTML = `<i class="fa-solid fa-layer-group"></i> <span id="btn-toggle-batch-map-text">Plotar no Mapa</span>`;
+    }
+
     if (batchCancelBtn) {
       batchCancelBtn.style.display = "inline-flex";
       batchCancelBtn.disabled = false;
@@ -580,6 +621,107 @@ document.addEventListener("DOMContentLoaded", () => {
       alert(`Falha no envio do lote: ${err.message}`);
       progressContainer.style.display = "none";
     }
+  }
+
+  function showBatchMapControls(job) {
+    if (!batchMapPanel) return;
+
+    batchMapPanel.style.display = "block";
+
+    // Atualizar badges de contadores
+    if (badgeCountViable) badgeCountViable.textContent = job.viable_count;
+    if (badgeCountAnalysis) badgeCountAnalysis.textContent = job.analysis_count;
+    if (badgeCountUnviable) badgeCountUnviable.textContent = job.unviable_count;
+
+    if (mapCntViable) mapCntViable.textContent = job.viable_count;
+    if (mapCntAnalysis) mapCntAnalysis.textContent = job.analysis_count;
+    if (mapCntUnviable) mapCntUnviable.textContent = job.unviable_count;
+
+    const totalGeocoded = (job.viable_count || 0) + (job.analysis_count || 0) + (job.unviable_count || 0);
+    if (mapBatchChipTotal) mapBatchChipTotal.textContent = `${totalGeocoded} pts`;
+    if (batchPointsLoadedCount) batchPointsLoadedCount.textContent = `${totalGeocoded} com coordenadas`;
+
+    // Configurar URLs para download KMZ (Google Earth)
+    if (batchDownloadKmzBtn) {
+      batchDownloadKmzBtn.href = api.getBatchKmzUrl(job.job_id);
+      batchDownloadKmzBtn.setAttribute("download", `viabilidade_lote_${job.job_id.slice(0, 8)}.kmz`);
+    }
+
+    if (batchDownloadKmzAnalysisBtn) {
+      if (job.analysis_count > 0) {
+        batchDownloadKmzAnalysisBtn.style.display = "inline-flex";
+        batchDownloadKmzAnalysisBtn.href = api.getBatchKmzUrl(job.job_id, "EM_ANALISE");
+        batchDownloadKmzAnalysisBtn.setAttribute("download", `viabilidade_em_analise_${job.job_id.slice(0, 8)}.kmz`);
+      } else {
+        batchDownloadKmzAnalysisBtn.style.display = "none";
+      }
+    }
+  }
+
+  async function toggleBatchMapPlot() {
+    if (!currentBatchJobId) return;
+
+    if (isBatchPlotted) {
+      mapManager.clearBatchPoints();
+      isBatchPlotted = false;
+      if (btnToggleBatchMap) {
+        btnToggleBatchMap.innerHTML = `<i class="fa-solid fa-layer-group"></i> <span id="btn-toggle-batch-map-text">Plotar no Mapa</span>`;
+      }
+      if (mapBatchToolbar) mapBatchToolbar.style.display = "none";
+      return;
+    }
+
+    if (btnToggleBatchMap) {
+      btnToggleBatchMap.disabled = true;
+      btnToggleBatchMap.innerHTML = `<span class="spinner-mini"></span> <span>Carregando Pontos...</span>`;
+    }
+
+    try {
+      if (!currentBatchPoints) {
+        const res = await api.getBatchResults(currentBatchJobId);
+        currentBatchPoints = res.points || [];
+      }
+
+      if (!currentBatchPoints.length) {
+        alert("Nenhum ponto com coordenadas válidas disponível para visualização no mapa.");
+        return;
+      }
+
+      const activeFilters = {
+        VIAVEL: filterMapViable ? filterMapViable.checked : true,
+        EM_ANALISE: filterMapAnalysis ? filterMapAnalysis.checked : true,
+        INVIAVEL: filterMapUnviable ? filterMapUnviable.checked : true
+      };
+
+      mapManager.renderBatchPoints(currentBatchPoints, { fitBounds: true, activeFilters });
+      isBatchPlotted = true;
+
+      if (btnToggleBatchMap) {
+        btnToggleBatchMap.innerHTML = `<i class="fa-solid fa-eye-slash"></i> <span id="btn-toggle-batch-map-text">Ocultar do Mapa</span>`;
+      }
+      if (mapBatchToolbar) mapBatchToolbar.style.display = "block";
+      if (batchPointsLoadedCount) {
+        batchPointsLoadedCount.textContent = `(${currentBatchPoints.length} pontos mapeados)`;
+      }
+    } catch (err) {
+      alert(`Falha ao plotar pontos: ${err.message}`);
+    } finally {
+      if (btnToggleBatchMap) btnToggleBatchMap.disabled = false;
+    }
+  }
+
+  function syncFilterStatus(category, checked) {
+    if (category === "VIAVEL") {
+      if (filterMapViable) filterMapViable.checked = checked;
+      if (mapQuickViable) mapQuickViable.checked = checked;
+    } else if (category === "EM_ANALISE") {
+      if (filterMapAnalysis) filterMapAnalysis.checked = checked;
+      if (mapQuickAnalysis) mapQuickAnalysis.checked = checked;
+    } else if (category === "INVIAVEL") {
+      if (filterMapUnviable) filterMapUnviable.checked = checked;
+      if (mapQuickUnviable) mapQuickUnviable.checked = checked;
+    }
+    mapManager.setBatchVisibility(category, checked);
   }
 
   function pollBatchStatus(jobId) {
@@ -634,6 +776,7 @@ document.addEventListener("DOMContentLoaded", () => {
           batchDownloadBtn.href = job.download_csv_url;
           batchDownloadBtn.innerHTML = `<i class="fa-solid fa-file-arrow-down"></i> Baixar Relatório (.CSV)`;
           batchDownloadBtn.style.display = "inline-flex";
+          showBatchMapControls(job);
           refreshSystemStatus();
         } else if (job.status === "CANCELLED") {
           clearInterval(batchPollInterval);
@@ -645,6 +788,9 @@ document.addEventListener("DOMContentLoaded", () => {
             batchDownloadBtn.href = job.download_csv_url;
             batchDownloadBtn.innerHTML = `<i class="fa-solid fa-file-arrow-down"></i> Baixar Dados Parciais (${job.processed_rows} linhas)`;
             batchDownloadBtn.style.display = "inline-flex";
+            if (job.processed_rows > 0) {
+              showBatchMapControls(job);
+            }
           }
           refreshSystemStatus();
         } else if (job.status === "FAILED") {
@@ -680,6 +826,48 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+  // Event Listeners para o Mapeamento e Validação do Lote
+  if (btnToggleBatchMap) btnToggleBatchMap.addEventListener("click", toggleBatchMapPlot);
+  if (btnZoomBatchMap) btnZoomBatchMap.addEventListener("click", () => mapManager.zoomToBatch());
+  if (btnClearBatchMap) btnClearBatchMap.addEventListener("click", () => {
+    mapManager.clearBatchPoints();
+    isBatchPlotted = false;
+    if (btnToggleBatchMap) {
+      btnToggleBatchMap.innerHTML = `<i class="fa-solid fa-layer-group"></i> <span id="btn-toggle-batch-map-text">Plotar no Mapa</span>`;
+    }
+    if (mapBatchToolbar) mapBatchToolbar.style.display = "none";
+  });
+
+  // Sincronização dos filtros (Sidebar e Barra flutuante do mapa)
+  if (filterMapViable) filterMapViable.addEventListener("change", (e) => syncFilterStatus("VIAVEL", e.target.checked));
+  if (mapQuickViable) mapQuickViable.addEventListener("change", (e) => syncFilterStatus("VIAVEL", e.target.checked));
+
+  if (filterMapAnalysis) filterMapAnalysis.addEventListener("change", (e) => syncFilterStatus("EM_ANALISE", e.target.checked));
+  if (mapQuickAnalysis) mapQuickAnalysis.addEventListener("change", (e) => syncFilterStatus("EM_ANALISE", e.target.checked));
+
+  if (filterMapUnviable) filterMapUnviable.addEventListener("change", (e) => syncFilterStatus("INVIAVEL", e.target.checked));
+  if (mapQuickUnviable) mapQuickUnviable.addEventListener("change", (e) => syncFilterStatus("INVIAVEL", e.target.checked));
+
+  // Ações da Barra Flutuante do Mapa
+  if (btnMapBatchClose) btnMapBatchClose.addEventListener("click", () => {
+    mapManager.clearBatchPoints();
+    isBatchPlotted = false;
+    if (btnToggleBatchMap) {
+      btnToggleBatchMap.innerHTML = `<i class="fa-solid fa-layer-group"></i> <span id="btn-toggle-batch-map-text">Plotar no Mapa</span>`;
+    }
+    if (mapBatchToolbar) mapBatchToolbar.style.display = "none";
+  });
+
+  if (btnMapQuickZoom) btnMapQuickZoom.addEventListener("click", () => mapManager.zoomToBatch());
+
+  if (btnMapQuickFocusAnalysis) btnMapQuickFocusAnalysis.addEventListener("click", async () => {
+    if (!isBatchPlotted) {
+      await toggleBatchMapPlot();
+    }
+    syncFilterStatus("EM_ANALISE", true);
+    mapManager.zoomToBatch("EM_ANALISE");
+  });
 
   // ==========================================
   // GESTÃO E UPLOAD DE MANCHAS (GEOJSON / KMZ)

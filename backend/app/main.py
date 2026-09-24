@@ -337,6 +337,59 @@ async def download_batch_result(job_id: str):
         media_type="text/csv"
     )
 
+@app.get("/api/batch/results/{job_id}", tags=["Processamento em Lote"])
+async def get_batch_results(job_id: str, status: Optional[str] = None):
+    """
+    Retorna os pontos avaliados do lote em formato JSON para renderização otimizada no mapa Leaflet.
+    Permite filtrar por status: 'VIAVEL', 'EM_ANALISE', 'INVIAVEL' ou combinações separadas por vírgula.
+    """
+    job = batch_processor.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job de processamento não encontrado.")
+
+    status_filter = [s.strip().upper() for s in status.split(",") if s.strip()] if status else None
+    points = batch_processor.get_batch_points(job_id, status_filter=status_filter)
+
+    return {
+        "job_id": job_id,
+        "status": job.status,
+        "total_rows": job.total_rows,
+        "counts": {
+            "VIAVEL": job.viable_count,
+            "EM_ANALISE": job.analysis_count,
+            "INVIAVEL": job.unviable_count,
+            "ERRO_GEOCODIFICACAO": job.error_count
+        },
+        "points_count": len(points),
+        "download_csv_url": job.download_csv_url,
+        "download_kmz_url": job.download_kmz_url or f"/api/batch/export-kmz/{job_id}",
+        "points": points
+    }
+
+@app.get("/api/batch/export-kmz/{job_id}", tags=["Processamento em Lote"])
+async def export_batch_kmz(job_id: str, status: Optional[str] = None):
+    """
+    Exporta os pontos do lote em formato KMZ (Google Earth / GIS), com pinos coloridos
+    (verde para viáveis, amarelo para em análise e vermelho para inviáveis) e balões descritivos completos.
+    """
+    job = batch_processor.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job de processamento não encontrado.")
+
+    status_filter = [s.strip().upper() for s in status.split(",") if s.strip()] if status else None
+    kmz_path = batch_processor.export_batch_kmz(job_id, status_filter=status_filter)
+    if not kmz_path or not kmz_path.exists():
+        raise HTTPException(status_code=404, detail="Nenhum ponto com coordenadas válidas encontrado para exportação KMZ.")
+
+    filter_label = f"_{'_'.join(status_filter).lower()}" if status_filter else ""
+    out_name = f"viabilidade_lote_{job_id[:8]}{filter_label}.kmz"
+
+    return FileResponse(
+        path=kmz_path,
+        filename=out_name,
+        media_type="application/vnd.google-earth.kmz"
+    )
+
 @app.get("/api/batch/template", tags=["Processamento em Lote"])
 async def download_batch_template():
     """Download da planilha modelo (.CSV) para consulta em lote."""
