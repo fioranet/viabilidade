@@ -1,5 +1,5 @@
-import { api } from "./api.js?v=2.0.1";
-import { MapManager } from "./map.js?v=2.0.1";
+import { api } from "./api.js?v=2.2.0";
+import { MapManager } from "./map.js?v=2.2.0";
 
 document.addEventListener("DOMContentLoaded", () => {
   const mapManager = new MapManager("map");
@@ -53,6 +53,18 @@ document.addEventListener("DOMContentLoaded", () => {
   const serverLoadText = document.getElementById("server-load-text");
   const sysCpuRam = document.getElementById("sys-cpu-ram");
   const sysQueueJobs = document.getElementById("sys-queue-jobs");
+
+  // Arquivo Selecionado e Parâmetros Customizados do Lote
+  const batchFileSelected = document.getElementById("batch-file-selected");
+  const batchFileIcon = document.getElementById("batch-file-icon");
+  const batchFileName = document.getElementById("batch-file-name");
+  const batchFileSize = document.getElementById("batch-file-size");
+  const btnRemoveBatchFile = document.getElementById("btn-remove-batch-file");
+  const batchParamsCard = document.getElementById("batch-params-card");
+  const btnResetBatchParams = document.getElementById("btn-reset-batch-params");
+  const batchParamTolerance = document.getElementById("batch-param-tolerance");
+  const batchParamMaxAnalysis = document.getElementById("batch-param-max-analysis");
+  const btnStartBatch = document.getElementById("btn-start-batch");
 
   // Mapeamento e Validação Geográfica do Lote
   const batchMapPanel = document.getElementById("batch-map-panel");
@@ -545,8 +557,56 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   // PROCESSAMENTO EM LOTE (BULK CHECK)
   // ==========================================
-  let currentBatchJobId = null;
-  let batchPollInterval = null;
+  let selectedBatchFile = null;
+
+  function formatBytes(bytes, decimals = 1) {
+    if (!bytes || bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
+  }
+
+  function setSelectedFile(file) {
+    if (!file) return;
+    selectedBatchFile = file;
+    if (batchFileName) batchFileName.textContent = file.name;
+    if (batchFileSize) batchFileSize.textContent = formatBytes(file.size);
+    if (batchFileIcon) {
+      const isExcel = file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
+      batchFileIcon.className = isExcel ? "fa-solid fa-file-excel" : "fa-solid fa-file-csv";
+      if (batchFileIcon.parentElement) {
+        batchFileIcon.parentElement.className = isExcel ? "file-icon-badge excel" : "file-icon-badge";
+      }
+    }
+    if (batchFileSelected) batchFileSelected.style.display = "flex";
+    if (btnStartBatch) {
+      btnStartBatch.style.display = "flex";
+      btnStartBatch.disabled = false;
+      btnStartBatch.innerHTML = `<i class="fa-solid fa-play"></i> Iniciar Análise de Viabilidade`;
+    }
+    if (dropzone) dropzone.style.display = "none";
+  }
+
+  function clearSelectedFile() {
+    selectedBatchFile = null;
+    fileBatchInput.value = "";
+    if (batchFileSelected) batchFileSelected.style.display = "none";
+    if (btnStartBatch) btnStartBatch.style.display = "none";
+    if (dropzone) dropzone.style.display = "block";
+  }
+
+  if (btnRemoveBatchFile) {
+    btnRemoveBatchFile.addEventListener("click", clearSelectedFile);
+  }
+
+  if (btnResetBatchParams) {
+    btnResetBatchParams.addEventListener("click", () => {
+      if (batchParamTolerance) batchParamTolerance.value = "5.0";
+      if (batchParamMaxAnalysis) batchParamMaxAnalysis.value = "100.0";
+    });
+  }
 
   dropzone.addEventListener("click", () => fileBatchInput.click());
 
@@ -563,15 +623,30 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
     dropzone.classList.remove("dragover");
     if (e.dataTransfer.files.length > 0) {
-      handleBatchUpload(e.dataTransfer.files[0]);
+      setSelectedFile(e.dataTransfer.files[0]);
     }
   });
 
   fileBatchInput.addEventListener("change", (e) => {
     if (e.target.files.length > 0) {
-      handleBatchUpload(e.target.files[0]);
+      setSelectedFile(e.target.files[0]);
     }
   });
+
+  if (btnStartBatch) {
+    btnStartBatch.addEventListener("click", () => {
+      if (!selectedBatchFile) {
+        alert("Por favor, selecione uma planilha CSV ou Excel antes de iniciar.");
+        return;
+      }
+      const tolVal = batchParamTolerance ? parseFloat(batchParamTolerance.value) : 5.0;
+      const maxVal = batchParamMaxAnalysis ? parseFloat(batchParamMaxAnalysis.value) : 100.0;
+      handleBatchUpload(selectedBatchFile, {
+        toleranciaBorda: isNaN(tolVal) ? 5.0 : tolVal,
+        maxDistanciaAnalise: isNaN(maxVal) ? 100.0 : maxVal
+      });
+    });
+  }
 
   function setBatchBadge(type, label) {
     if (!batchJobBadge) return;
@@ -583,7 +658,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  async function handleBatchUpload(file) {
+  async function handleBatchUpload(file, options = {}) {
     progressContainer.style.display = "block";
     batchDownloadBtn.style.display = "none";
     if (batchMapPanel) batchMapPanel.style.display = "none";
@@ -593,6 +668,11 @@ document.addEventListener("DOMContentLoaded", () => {
     currentBatchPoints = null;
     if (btnToggleBatchMap) {
       btnToggleBatchMap.innerHTML = `<i class="fa-solid fa-layer-group"></i> <span id="btn-toggle-batch-map-text">Plotar no Mapa</span>`;
+    }
+
+    if (btnStartBatch) {
+      btnStartBatch.disabled = true;
+      btnStartBatch.innerHTML = `<span class="spinner-mini"></span> Processando Lote...`;
     }
 
     if (batchCancelBtn) {
@@ -613,13 +693,17 @@ document.addEventListener("DOMContentLoaded", () => {
       if (selectedBatchLayer === "__primary__") {
         selectedBatchLayer = "primary";
       }
-      const res = await api.uploadBatch(file, selectedBatchLayer || null);
+      const res = await api.uploadBatch(file, selectedBatchLayer || null, options);
       currentBatchJobId = res.job_id;
       pollBatchStatus(res.job_id);
       refreshSystemStatus();
     } catch (err) {
       alert(`Falha no envio do lote: ${err.message}`);
       progressContainer.style.display = "none";
+      if (btnStartBatch) {
+        btnStartBatch.disabled = false;
+        btnStartBatch.innerHTML = `<i class="fa-solid fa-play"></i> Iniciar Análise de Viabilidade`;
+      }
     }
   }
 
@@ -773,6 +857,10 @@ document.addEventListener("DOMContentLoaded", () => {
           setBatchBadge("completed", "Concluído");
           if (batchQueueInfo) batchQueueInfo.style.display = "none";
           if (batchCancelBtn) batchCancelBtn.style.display = "none";
+          if (btnStartBatch) {
+            btnStartBatch.disabled = false;
+            btnStartBatch.innerHTML = `<i class="fa-solid fa-rotate-right"></i> Reprocessar Lote`;
+          }
           batchDownloadBtn.href = job.download_csv_url;
           batchDownloadBtn.innerHTML = `<i class="fa-solid fa-file-arrow-down"></i> Baixar Relatório (.CSV)`;
           batchDownloadBtn.style.display = "inline-flex";
@@ -783,6 +871,10 @@ document.addEventListener("DOMContentLoaded", () => {
           setBatchBadge("cancelled", "Cancelado");
           if (batchQueueInfo) batchQueueInfo.style.display = "none";
           if (batchCancelBtn) batchCancelBtn.style.display = "none";
+          if (btnStartBatch) {
+            btnStartBatch.disabled = false;
+            btnStartBatch.innerHTML = `<i class="fa-solid fa-play"></i> Iniciar Análise de Viabilidade`;
+          }
           progressText.textContent = job.current_stage || "Processamento cancelado pelo usuário.";
           if (job.download_csv_url) {
             batchDownloadBtn.href = job.download_csv_url;
@@ -798,6 +890,10 @@ document.addEventListener("DOMContentLoaded", () => {
           setBatchBadge("failed", "Falha");
           if (batchQueueInfo) batchQueueInfo.style.display = "none";
           if (batchCancelBtn) batchCancelBtn.style.display = "none";
+          if (btnStartBatch) {
+            btnStartBatch.disabled = false;
+            btnStartBatch.innerHTML = `<i class="fa-solid fa-play"></i> Iniciar Análise de Viabilidade`;
+          }
           progressText.textContent = `Erro: ${job.error_message}`;
           refreshSystemStatus();
         }

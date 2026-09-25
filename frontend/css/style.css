@@ -1176,5 +1176,82 @@ input:checked + .slider:before {
   flex-shrink: 0;
 }
 
+/* ==========================================
+   ESTILOS DE PRÉ-VISUALIZAÇÃO E PARÂMETROS DO LOTE
+   ========================================== */
+.batch-file-selected {
+  background: var(--bg-card);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.65rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.file-icon-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.file-icon-badge.excel {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.btn-icon-subtle {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  font-size: 0.95rem;
+}
+
+.btn-icon-subtle:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.batch-params-card {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.btn-text-link {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.7rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-text-link:hover {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.1);
+}
+
 
 

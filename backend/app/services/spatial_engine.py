@@ -142,11 +142,14 @@ class SpatialEngine:
         latitude: float,
         longitude: float,
         target_layer_ids: Optional[Union[List[str], set]] = None,
-        primary_layer_ids: Optional[Union[List[str], Set[str]]] = None
+        primary_layer_ids: Optional[Union[List[str], Set[str]]] = None,
+        tolerancia_borda_metros: Optional[float] = None,
+        max_distancia_analise_metros: Optional[float] = None
     ) -> ViabilityResponse:
         """
         Verifica a viabilidade técnica de um ponto (Lat/Long).
         Permite filtrar opcionalmente por um conjunto de IDs de camadas (target_layer_ids).
+        Permite customizar as distâncias de tolerância de borda e extensão de rede para análise.
         Trata sobreposição de múltiplos polígonos, priorizando camadas primárias e tecnologias mais nobres.
         Retorna ViabilityResponse detalhando se o ponto está dentro, na borda ou distante.
         """
@@ -260,7 +263,10 @@ class SpatialEngine:
         # 4. Avaliar tolerância de borda e raio de extensão de rede
         nearest_distance_meters = round(nearest_distance_meters, 1)
 
-        if nearest_distance_meters <= TOLERANCIA_BORDA_METROS:
+        tol_borda = tolerancia_borda_metros if tolerancia_borda_metros is not None else TOLERANCIA_BORDA_METROS
+        max_analise = max_distancia_analise_metros if max_distancia_analise_metros is not None else MAX_DISTANCIA_ANALISE_METROS
+
+        if nearest_distance_meters <= tol_borda:
             # Considerar viável por tolerância de borda GPS/satélite
             matched = PolygonMatchInfo(
                 layer_id=nearest_meta["layer_id"],
@@ -281,7 +287,7 @@ class SpatialEngine:
                 message=f"Viabilidade Confirmada (na borda da mancha a {nearest_distance_meters}m). Atendido por {matched.technology} ({matched.pop})."
             )
 
-        elif nearest_distance_meters <= MAX_DISTANCIA_ANALISE_METROS:
+        elif nearest_distance_meters <= max_analise:
             # Em Análise (potencial extensão de rede / lançamento de cabo drop)
             matched = PolygonMatchInfo(
                 layer_id=nearest_meta["layer_id"],

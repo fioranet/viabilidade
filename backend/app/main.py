@@ -242,11 +242,14 @@ async def delete_pop(pop_id: str):
 async def upload_batch(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    layers: Optional[str] = Form(None)
+    layers: Optional[str] = Form(None),
+    tolerancia_borda: Optional[float] = Form(None),
+    max_distancia_analise: Optional[float] = Form(None)
 ):
     """
     Recebe um arquivo CSV ou XLSX com endereços/coordenadas para verificação em lote assíncrona.
     Opcionalmente recebe 'layers' para filtrar as manchas avaliadas durante o processamento do lote.
+    Permite customizar as distâncias 'tolerancia_borda' e 'max_distancia_analise' para o processamento.
     """
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in [".csv", ".xlsx", ".xls"]:
@@ -269,7 +272,14 @@ async def upload_batch(
         shutil.copyfileobj(file.file, buffer)
 
     job_id = await batch_processor.start_batch_job(temp_path, file.filename)
-    background_tasks.add_task(batch_processor.execute_batch, job_id, temp_path, target_layer_ids=target_layer_ids)
+    background_tasks.add_task(
+        batch_processor.execute_batch,
+        job_id,
+        temp_path,
+        target_layer_ids=target_layer_ids,
+        tolerancia_borda_metros=tolerancia_borda,
+        max_distancia_analise_metros=max_distancia_analise
+    )
 
     job = batch_processor.get_job(job_id)
     return {

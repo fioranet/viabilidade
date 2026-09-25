@@ -99,7 +99,14 @@ class BatchProcessor:
         self._update_queue_positions()
         return job_id
 
-    async def execute_batch(self, job_id: str, file_path: Path, target_layer_ids: Optional[List[str]] = None):
+    async def execute_batch(
+        self,
+        job_id: str,
+        file_path: Path,
+        target_layer_ids: Optional[List[str]] = None,
+        tolerancia_borda_metros: Optional[float] = None,
+        max_distancia_analise_metros: Optional[float] = None
+    ):
         job = self.jobs.get(job_id)
         if not job:
             return
@@ -294,7 +301,13 @@ class BatchProcessor:
                     # 3. Validar no motor espacial com coordenadas obtidas
                     if lat_val is not None and lng_val is not None:
                         job.current_stage = f"Avaliando viabilidade espacial {idx + 1}/{total_rows}..."
-                        viability = spatial_engine.check_viability(lat_val, lng_val, target_layer_ids=target_layer_ids)
+                        viability = spatial_engine.check_viability(
+                            lat_val,
+                            lng_val,
+                            target_layer_ids=target_layer_ids,
+                            tolerancia_borda_metros=tolerancia_borda_metros,
+                            max_distancia_analise_metros=max_distancia_analise_metros
+                        )
 
                         if viability.status == ViabilityStatus.VIAVEL:
                             job.viable_count += 1

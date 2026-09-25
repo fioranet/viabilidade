@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
   <!-- CSS Customizado -->
-  <link rel="stylesheet" href="css/style.css?v=2.0.1">
+  <link rel="stylesheet" href="css/style.css?v=2.2.0">
 </head>
 <body>
 
@@ -179,7 +179,65 @@
         <input type="file" id="file-batch-input" accept=".csv, .xlsx, .xls" style="display: none;" />
       </div>
 
-      <div style="text-align: right; margin-bottom: 1rem;">
+      <!-- Card de Arquivo Selecionado (Pré-visualização antes de iniciar) -->
+      <div id="batch-file-selected" class="batch-file-selected" style="display: none;">
+        <div style="display: flex; align-items: center; gap: 0.65rem; flex: 1; min-width: 0;">
+          <div class="file-icon-badge">
+            <i id="batch-file-icon" class="fa-solid fa-file-csv"></i>
+          </div>
+          <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+            <div id="batch-file-name" style="font-weight: 700; font-size: 0.82rem; color: #fff; text-overflow: ellipsis; overflow: hidden;"></div>
+            <div id="batch-file-size" style="font-size: 0.72rem; color: #94a3b8; font-weight: 500;"></div>
+          </div>
+        </div>
+        <button id="btn-remove-batch-file" type="button" class="btn-icon-subtle" title="Remover e selecionar outro arquivo">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Bloco de Ajuste de Parâmetros de Distância para o Lote -->
+      <div id="batch-params-card" class="batch-params-card" style="margin-top: 0.85rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.55rem;">
+          <div style="font-size: 0.74rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.03em; display: flex; align-items: center; gap: 0.35rem;">
+            <i class="fa-solid fa-sliders" style="color: #3b82f6;"></i>
+            <span>Critérios de Distância</span>
+          </div>
+          <button id="btn-reset-batch-params" type="button" class="btn-text-link" title="Restaurar valores padrão (5m / 100m)">
+            <i class="fa-solid fa-rotate-left"></i> Padrão
+          </button>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;">
+          <div class="input-group" style="margin-bottom: 0;">
+            <label class="input-label" for="batch-param-tolerance" style="font-size: 0.72rem;">
+              Tolerância de Borda:
+            </label>
+            <div style="position: relative;">
+              <input type="number" id="batch-param-tolerance" class="search-input" value="5.0" min="0" max="500" step="0.5" style="padding-right: 1.8rem; font-weight: 600;" />
+              <span style="position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); font-size: 0.72rem; color: var(--text-secondary);">m</span>
+            </div>
+            <span style="font-size: 0.68rem; color: #10b981; margin-top: 0.2rem; display: block; font-weight: 500;">✓ Viável na borda</span>
+          </div>
+
+          <div class="input-group" style="margin-bottom: 0;">
+            <label class="input-label" for="batch-param-max-analysis" style="font-size: 0.72rem;">
+              Máx. Em Análise:
+            </label>
+            <div style="position: relative;">
+              <input type="number" id="batch-param-max-analysis" class="search-input" value="100.0" min="0" max="10000" step="5" style="padding-right: 1.8rem; font-weight: 600;" />
+              <span style="position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); font-size: 0.72rem; color: var(--text-secondary);">m</span>
+            </div>
+            <span style="font-size: 0.68rem; color: #f59e0b; margin-top: 0.2rem; display: block; font-weight: 500;">⭐ Vistoria / Drop</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Botão Explícito para Iniciar Análise de Viabilidade -->
+      <button id="btn-start-batch" type="button" class="btn-primary" style="width: 100%; margin-top: 0.85rem; padding: 0.75rem; font-weight: 700; display: none; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);">
+        <i class="fa-solid fa-play"></i> Iniciar Análise de Viabilidade
+      </button>
+
+      <div style="text-align: right; margin-top: 0.65rem; margin-bottom: 1rem;">
         <a href="/api/batch/template" download="modelo_consulta_viabilidade.csv" style="color: #3b82f6; font-size: 0.78rem; text-decoration: none;">
           <i class="fa-solid fa-download"></i> Baixar planilha modelo (.CSV)
         </a>
@@ -538,6 +596,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
   <!-- App Script -->
-  <script type="module" src="js/app.js?v=2.0.1"></script>
+  <script type="module" src="js/app.js?v=2.2.0"></script>
 </body>
 </html>

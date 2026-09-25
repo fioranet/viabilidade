@@ -140,13 +140,19 @@ export const api = {
 
   /**
    * Envia arquivo CSV ou XLSX para processamento em lote.
-   * Suporta parâmetro opcional 'layers' para filtrar manchas no processamento.
+   * Suporta parâmetro opcional 'layers' e 'options' (toleranciaBorda, maxDistanciaAnalise).
    */
-  async uploadBatch(file, layers = null) {
+  async uploadBatch(file, layers = null, options = {}) {
     const formData = new FormData();
     formData.append("file", file);
     if (layers) {
       formData.append("layers", Array.isArray(layers) ? layers.join(",") : layers);
+    }
+    if (options.toleranciaBorda !== undefined && options.toleranciaBorda !== null) {
+      formData.append("tolerancia_borda", options.toleranciaBorda);
+    }
+    if (options.maxDistanciaAnalise !== undefined && options.maxDistanciaAnalise !== null) {
+      formData.append("max_distancia_analise", options.maxDistanciaAnalise);
     }
 
     const res = await fetch(`${API_BASE}/api/batch/upload`, {
