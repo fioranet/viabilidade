@@ -1,5 +1,5 @@
-import { api } from "./api.js?v=2.2.0";
-import { MapManager } from "./map.js?v=2.2.0";
+import { api } from "./api.js?v=2.2.1";
+import { MapManager } from "./map.js?v=2.2.1";
 
 document.addEventListener("DOMContentLoaded", () => {
   const mapManager = new MapManager("map");
@@ -95,6 +95,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnMapQuickZoom = document.getElementById("btn-map-quick-zoom");
   const btnMapQuickFocusAnalysis = document.getElementById("btn-map-quick-focus-analysis");
 
+  let currentBatchJobId = null;
+  let batchPollInterval = null;
   let currentBatchPoints = null;
   let isBatchPlotted = false;
 
@@ -595,6 +597,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (batchFileSelected) batchFileSelected.style.display = "none";
     if (btnStartBatch) btnStartBatch.style.display = "none";
     if (dropzone) dropzone.style.display = "block";
+    currentBatchJobId = null;
+    if (batchPollInterval) {
+      clearInterval(batchPollInterval);
+      batchPollInterval = null;
+    }
   }
 
   if (btnRemoveBatchFile) {
@@ -666,6 +673,11 @@ document.addEventListener("DOMContentLoaded", () => {
     mapManager.clearBatchPoints();
     isBatchPlotted = false;
     currentBatchPoints = null;
+    currentBatchJobId = null;
+    if (batchPollInterval) {
+      clearInterval(batchPollInterval);
+      batchPollInterval = null;
+    }
     if (btnToggleBatchMap) {
       btnToggleBatchMap.innerHTML = `<i class="fa-solid fa-layer-group"></i> <span id="btn-toggle-batch-map-text">Plotar no Mapa</span>`;
     }
