@@ -212,5 +212,36 @@ export const api = {
   getBatchKmzUrl(jobId, status = null) {
     const query = status ? `?status=${encodeURIComponent(status)}` : "";
     return `${API_BASE}/api/batch/export-kmz/${jobId}${query}`;
+  },
+
+  /**
+   * Solicita o planejamento e otimização de rotas para visitas e vistorias.
+   */
+  async planRoutes(options) {
+    const res = await fetch(`${API_BASE}/api/routing/plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Falha ao gerar rotas" }));
+      throw new Error(err.detail || "Erro no planejamento de rotas.");
+    }
+    return await res.json();
+  },
+
+  /**
+   * Retorna o link de download do KMZ de rotas com polylines e marcadores.
+   */
+  getRouteKmzUrl(planId) {
+    return `${API_BASE}/api/routing/export-kmz/${planId}`;
+  },
+
+  /**
+   * Retorna o link de download da planilha CSV com a ordem das visitas e links de navegação.
+   */
+  getRouteCsvUrl(planId) {
+    return `${API_BASE}/api/routing/export-csv/${planId}`;
   }
 };
+

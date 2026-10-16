@@ -1253,5 +1253,125 @@ input:checked + .slider:before {
   background: rgba(59, 130, 246, 0.1);
 }
 
+/* ==========================================
+   ROTEIRIZAÇÃO INTELIGENTE DE VISITAS
+   ========================================== */
+
+.batch-routing-card {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  border-radius: 8px;
+  padding: 0.85rem;
+  margin-top: 1rem;
+}
+
+.route-card-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.6rem;
+  border-left: 4px solid #06b6d4;
+  transition: all 0.2s ease;
+}
+
+.route-card-item:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.route-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.route-tech-title {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.route-metrics-bar {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  margin-bottom: 0.55rem;
+}
+
+.route-actions-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.btn-route-action {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-route-action.maps {
+  background: #2563eb;
+  color: #fff;
+}
+
+.btn-route-action.maps:hover {
+  background: #1d4ed8;
+}
+
+.btn-route-action.focus {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+.btn-route-action.focus:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Pins customizados no mapa */
+.route-pin-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.75rem;
+  font-family: 'Inter', sans-serif;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  cursor: pointer;
+}
+
+.route-depot-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.9rem;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.6);
+  border: 2px solid #ffffff;
+  cursor: pointer;
+}
+
 
 

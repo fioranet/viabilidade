@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
   <!-- CSS Customizado -->
-  <link rel="stylesheet" href="css/style.css?v=2.2.2">
+  <link rel="stylesheet" href="css/style.css?v=2.2.3">
 </head>
 <body>
 
@@ -391,6 +391,112 @@
               </a>
             </div>
           </div>
+
+          <!-- Bloco de Roteirização Inteligente de Visitas -->
+          <div id="batch-routing-card" class="batch-routing-card" style="display: none; margin-top: 1.15rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.65rem;">
+              <div style="font-size: 0.85rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 0.4rem;">
+                <i class="fa-solid fa-route" style="color: #06b6d4;"></i>
+                <span>Roteirização Inteligente de Visitas</span>
+              </div>
+              <span style="font-size: 0.65rem; background: rgba(6, 182, 212, 0.2); color: #06b6d4; padding: 2px 6px; border-radius: 4px; font-weight: 700;">OTIMIZADOR</span>
+            </div>
+
+            <p style="font-size: 0.76rem; color: #94a3b8; line-height: 1.35; margin-bottom: 0.75rem;">
+              Distribua as vistorias entre seus técnicos no melhor trajeto, evitando zigue-zagues e separando distâncias excessivas em múltiplos dias.
+            </p>
+
+            <!-- Parâmetros de Roteamento -->
+            <div style="background: rgba(0,0,0,0.22); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.65rem; margin-bottom: 0.75rem;">
+              
+              <!-- 1. Filtrar quais pontos entram no roteiro -->
+              <div style="margin-bottom: 0.6rem;">
+                <label style="font-size: 0.72rem; color: var(--text-secondary); font-weight: 600; display: block; margin-bottom: 0.3rem;">
+                  Pontos a Visitar:
+                </label>
+                <div style="display: flex; gap: 0.8rem; font-size: 0.75rem;">
+                  <label style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer; color: #fbbf24;">
+                    <input type="checkbox" id="route-filter-analysis" checked>
+                    <span>⭐ Em Análise (Vistoria)</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer; color: #10b981;">
+                    <input type="checkbox" id="route-filter-viable">
+                    <span>Viáveis</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 2. Qtd Técnicos e Ponto de Partida -->
+              <div style="display: grid; grid-template-columns: 1fr 1.25fr; gap: 0.5rem; margin-bottom: 0.6rem;">
+                <div>
+                  <label for="route-param-techs" style="font-size: 0.72rem; color: var(--text-secondary); font-weight: 600; display: block; margin-bottom: 0.25rem;">
+                    👨‍🔧 Técnicos:
+                  </label>
+                  <select id="route-param-techs" class="search-input" style="padding: 0.35rem 0.5rem; font-size: 0.8rem; background: var(--bg-card); color: #fff;">
+                    <option value="1">1 Técnico</option>
+                    <option value="2" selected>2 Técnicos</option>
+                    <option value="3">3 Técnicos</option>
+                    <option value="4">4 Técnicos</option>
+                    <option value="5">5 Técnicos</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="route-param-depot" style="font-size: 0.72rem; color: var(--text-secondary); font-weight: 600; display: block; margin-bottom: 0.25rem;">
+                    📍 Partida:
+                  </label>
+                  <select id="route-param-depot" class="search-input" style="padding: 0.35rem 0.5rem; font-size: 0.8rem; background: var(--bg-card); color: #fff;">
+                    <option value="nearest_pop" selected>POP Mais Próximo</option>
+                    <option value="first_point">Primeiro Ponto da Lista</option>
+                    <option value="company_hq">Sede / Central</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- 3. Limite diário e Raio Máximo -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                <div>
+                  <label for="route-param-max-stops" style="font-size: 0.72rem; color: var(--text-secondary); font-weight: 600; display: block; margin-bottom: 0.25rem;">
+                    ⏱️ Máx. Paradas/Dia:
+                  </label>
+                  <input type="number" id="route-param-max-stops" class="search-input" value="8" min="1" max="30" style="padding: 0.35rem 0.5rem; font-size: 0.8rem; text-align: center;">
+                </div>
+                <div>
+                  <label for="route-param-max-dist" style="font-size: 0.72rem; color: var(--text-secondary); font-weight: 600; display: block; margin-bottom: 0.25rem;">
+                    🛣️ Raio Máx. (km):
+                  </label>
+                  <input type="number" id="route-param-max-dist" class="search-input" value="60" min="10" max="300" style="padding: 0.35rem 0.5rem; font-size: 0.8rem; text-align: center;">
+                </div>
+              </div>
+            </div>
+
+            <!-- Botão de Ação -->
+            <button id="btn-generate-routes" type="button" class="btn-primary" style="width: 100%; padding: 0.65rem 0.75rem; font-size: 0.85rem; background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%); border: none;">
+              <i class="fa-solid fa-route"></i> Otimizar e Gerar Roteiros
+            </button>
+
+            <!-- Container de Resultados das Rotas Geradas -->
+            <div id="route-results-container" style="display: none; margin-top: 0.85rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <span id="route-results-summary" style="font-size: 0.76rem; font-weight: 700; color: #fff;"></span>
+                <button id="btn-clear-routes" type="button" class="btn-text-link" title="Limpar rotas do mapa">
+                  <i class="fa-solid fa-trash-can"></i> Limpar
+                </button>
+              </div>
+
+              <!-- Lista de Roteiros por Técnico -->
+              <div id="route-cards-list"></div>
+
+              <!-- Links de Exportação Geral do Roteiro -->
+              <div style="display: flex; gap: 0.4rem; margin-top: 0.65rem;">
+                <a id="btn-export-route-kmz" href="#" class="btn-route-action maps" style="background: #10b981;" download>
+                  <i class="fa-solid fa-earth-americas"></i> Baixar KMZ
+                </a>
+                <a id="btn-export-route-csv" href="#" class="btn-route-action maps" style="background: #3b82f6;" download>
+                  <i class="fa-solid fa-file-csv"></i> Baixar CSV
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -558,6 +664,25 @@
       </div>
     </div>
 
+    <!-- Barra Flutuante de Controle de Roteiros no Mapa -->
+    <div id="map-routes-toolbar" class="map-batch-toolbar" style="display: none; top: auto; bottom: 35px; left: calc(var(--sidebar-width) + 20px);">
+      <div class="map-batch-toolbar-header">
+        <div style="display: flex; align-items: center; gap: 0.4rem;">
+          <span class="status-dot" style="background-color: #06b6d4;"></span>
+          <span style="font-weight: 700; font-size: 0.8rem; color: #fff;">Roteiros Ativos</span>
+          <span id="map-routes-chip-total" class="map-toolbar-badge" style="background: rgba(6,182,212,0.25); color: #06b6d4;">0</span>
+        </div>
+        <button id="btn-map-routes-close" class="map-toolbar-close-btn" title="Ocultar rotas do mapa">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="map-batch-toolbar-actions">
+        <button id="btn-map-routes-zoom" class="btn-map-quick" title="Ajustar zoom para todos os roteiros">
+          <i class="fa-solid fa-crosshairs"></i> Enquadrar Rotas
+        </button>
+      </div>
+    </div>
+
     <!-- Legenda Flutuante -->
     <div class="map-legend">
       <div class="legend-title">Manchas de Cobertura</div>
@@ -599,6 +724,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
   <!-- App Script -->
-  <script type="module" src="js/app.js?v=2.2.2"></script>
+  <script type="module" src="js/app.js?v=2.2.3"></script>
 </body>
 </html>

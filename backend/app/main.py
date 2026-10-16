@@ -24,7 +24,9 @@ from app.models.schemas import (
     SystemStatus,
     LayerMetadata,
     POP,
-    POPCreate
+    POPCreate,
+    RoutingOptions,
+    RoutePlanResponse
 )
 from app.services.spatial_engine import spatial_engine
 from app.services.geocoding import geocoding_service
@@ -32,6 +34,7 @@ from app.services.layer_manager import layer_manager
 from app.services.pop_manager import pop_manager
 from app.services.batch_processor import batch_processor
 from app.services.system_monitor import system_monitor
+from app.services.routing_engine import routing_engine
 
 app = FastAPI(
     title="Sistema de Viabilidade Técnica Geográfica - ISP",
@@ -423,6 +426,65 @@ async def download_batch_template():
     return FileResponse(
         path=template_file,
         filename="modelo_consulta_viabilidade.csv",
+        media_type="text/csv"
+    )
+
+# ==========================================
+# ENDPOINTS DE ROTEIRIZAÇÃO INTELIGENTE (VRP / TSP)
+# ==========================================
+
+@app.post("/api/routing/plan", response_model=RoutePlanResponse, tags=["Roteirização de Visitas"])
+async def plan_routes(options: RoutingOptions):
+    """
+    Gera rotas otimizadas para visitas e vistorias de campo.
+    Aceita o ID de um lote ('job_id') previamente processado e calcula a melhor distribuição
+    entre os técnicos disponíveis, com ordenação via 2-Opt, detecção de distâncias proibitivas
+    e geração de waypoints de navegação para Google Maps e Waze.
+    """
+    points = []
+    if options.job_id:
+        job = batch_processor.get_job(options.job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Lote especificado não foi encontrado.")
+        points = batch_processor.get_batch_points(options.job_id, status_filter=options.filter_status)
+
+    if not points:
+        raise HTTPException(
+            status_code=400,
+            detail="Nenhum ponto com coordenadas válidas encontrado para os filtros selecionados."
+        )
+
+    return routing_engine.generate_plan(points, options, job_id=options.job_id)
+
+@app.get("/api/routing/export-kmz/{plan_id}", tags=["Roteirização de Visitas"])
+async def export_routing_kmz(plan_id: str):
+    """Exporta o plano de rotas em formato KMZ com polylines coloridas e paradas numeradas."""
+    plan = routing_engine.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plano de roteamento não encontrado ou expirado.")
+
+    kmz_path = UPLOADS_DIR / f"roteiro_{plan_id[:8]}.kmz"
+    routing_engine.export_plan_kmz(plan, kmz_path)
+
+    return FileResponse(
+        path=kmz_path,
+        filename=f"roteiro_visitas_{plan_id[:8]}.kmz",
+        media_type="application/vnd.google-earth.kmz"
+    )
+
+@app.get("/api/routing/export-csv/{plan_id}", tags=["Roteirização de Visitas"])
+async def export_routing_csv(plan_id: str):
+    """Exporta a planilha CSV executiva das rotas com links de navegação para a equipe de campo."""
+    plan = routing_engine.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plano de roteamento não encontrado ou expirado.")
+
+    csv_path = UPLOADS_DIR / f"roteiro_{plan_id[:8]}.csv"
+    routing_engine.export_plan_csv(plan, csv_path)
+
+    return FileResponse(
+        path=csv_path,
+        filename=f"roteiro_visitas_{plan_id[:8]}.csv",
         media_type="text/csv"
     )
 

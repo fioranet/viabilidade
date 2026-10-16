@@ -20,6 +20,8 @@ export class MapManager {
       INVIAVEL: true
     };
     this.batchPoints = [];
+    this.routeLayerGroup = null;
+    this.currentRoutePlan = null;
     
     this.initMap();
   }
@@ -33,10 +35,11 @@ export class MapManager {
     // Inicializar Canvas Renderer ultra leve (evita criar nós DOM para cada ponto)
     this.canvasRenderer = L.canvas({ padding: 0.5 });
 
-    // Inicializar grupos de camadas para o lote
+    // Inicializar grupos de camadas para o lote e rotas
     this.batchLayers.VIAVEL = L.layerGroup();
     this.batchLayers.EM_ANALISE = L.layerGroup();
     this.batchLayers.INVIAVEL = L.layerGroup();
+    this.routeLayerGroup = L.layerGroup().addTo(this.map);
 
     // Adicionar controle de zoom no canto superior direito
     L.control.zoom({ position: "topright" }).addTo(this.map);
@@ -470,5 +473,148 @@ export class MapManager {
     if (!lat || !lon) return;
     this.map.flyTo([lat, lon], 17, { duration: 1.0 });
   }
+
+  /**
+   * Renderiza os roteiros otimizados no mapa com polylines coloridas e paradas numeradas.
+   */
+  renderRoutes(routePlan) {
+    this.clearRoutes();
+    if (!routePlan || !routePlan.routes || routePlan.routes.length === 0) return;
+
+    this.currentRoutePlan = routePlan;
+    const bounds = L.latLngBounds();
+    let hasCoords = false;
+
+    routePlan.routes.forEach((route) => {
+      const color = route.color_hex || "#06b6d4";
+
+      // 1. Marcador do Ponto de Partida (Base/POP)
+      if (route.depot_lat && route.depot_lon) {
+        const depotIcon = L.divIcon({
+          className: "route-depot-pin",
+          html: `
+            <div class="route-depot-badge" style="background: ${color};" title="Base: ${route.depot_name}">
+              <i class="fa-solid fa-flag-checkered"></i>
+            </div>
+          `,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+          popupAnchor: [0, -18]
+        });
+
+        const depotMarker = L.marker([route.depot_lat, route.depot_lon], { icon: depotIcon });
+        depotMarker.bindPopup(`
+          <div style="font-family: inherit; font-size: 0.85rem; line-height: 1.4;">
+            <div style="font-weight: 700; color: ${color}; margin-bottom: 0.25rem;">
+              <i class="fa-solid fa-warehouse"></i> PONTO DE PARTIDA: ${route.depot_name}
+            </div>
+            <div style="font-size: 0.78rem; color: #64748b;">
+              Início do roteiro para <b>${route.technician_name}</b>
+            </div>
+          </div>
+        `);
+        this.routeLayerGroup.addLayer(depotMarker);
+        bounds.extend([route.depot_lat, route.depot_lon]);
+        hasCoords = true;
+      }
+
+      // 2. Traçado da Rota (Polyline)
+      if (route.polyline_coords && route.polyline_coords.length >= 2) {
+        const polyline = L.polyline(route.polyline_coords, {
+          color: color,
+          weight: 4.5,
+          opacity: 0.9,
+          dashArray: "6, 6",
+          lineJoin: "round"
+        });
+        this.routeLayerGroup.addLayer(polyline);
+
+        route.polyline_coords.forEach((coord) => {
+          bounds.extend(coord);
+          hasCoords = true;
+        });
+      }
+
+      // 3. Marcadores de Paradas Numeradas [1], [2], [3]...
+      route.stops.forEach((stop) => {
+        const stopIcon = L.divIcon({
+          className: "route-stop-pin",
+          html: `
+            <div class="route-pin-badge" style="background: ${color}; border: 2px solid #ffffff; box-shadow: 0 3px 10px rgba(0,0,0,0.5);">
+              ${stop.sequence_order}
+            </div>
+          `,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+          popupAnchor: [0, -16]
+        });
+
+        const stopMarker = L.marker([stop.latitude, stop.longitude], { icon: stopIcon });
+
+        const popupContent = `
+          <div style="font-family: inherit; font-size: 0.84rem; line-height: 1.45; min-width: 220px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.25rem;">
+              <span style="font-weight: 700; color: ${color};">
+                Parada #${stop.sequence_order} • ${route.technician_name}
+              </span>
+              <span style="font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; background: ${stop.status === 'VIAVEL' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}; color: ${stop.status === 'VIAVEL' ? '#10b981' : '#f59e0b'};">
+                ${stop.status}
+              </span>
+            </div>
+            <div style="font-weight: 600; color: #f1f5f9; margin-bottom: 0.2rem;">${stop.title}</div>
+            <div style="font-size: 0.78rem; color: #94a3b8; margin-bottom: 0.5rem;">${stop.address}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; background: rgba(0,0,0,0.25); padding: 0.4rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-bottom: 0.5rem;">
+              <div><b>Trecho:</b> ${(stop.distance_from_prev_meters / 1000).toFixed(1)} km</div>
+              <div><b>Desloc.:</b> ${stop.estimated_travel_minutes} min</div>
+              <div><b>Acumulado:</b> ${stop.cumulative_time_minutes} min</div>
+              <div><b>Seq:</b> ${stop.sequence_order}/${route.total_stops}</div>
+            </div>
+            <div style="display: flex; gap: 0.4rem;">
+              <a href="${stop.google_maps_url}" target="_blank" style="flex: 1; text-align: center; background: #2563eb; color: #fff; text-decoration: none; padding: 0.35rem 0.5rem; border-radius: 4px; font-size: 0.74rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem;">
+                <i class="fa-solid fa-map-location-dot"></i> Maps
+              </a>
+              <a href="${stop.waze_url}" target="_blank" style="flex: 1; text-align: center; background: #0284c7; color: #fff; text-decoration: none; padding: 0.35rem 0.5rem; border-radius: 4px; font-size: 0.74rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem;">
+                <i class="fa-brands fa-waze"></i> Waze
+              </a>
+            </div>
+          </div>
+        `;
+
+        stopMarker.bindPopup(popupContent);
+        this.routeLayerGroup.addLayer(stopMarker);
+        bounds.extend([stop.latitude, stop.longitude]);
+        hasCoords = true;
+      });
+    });
+
+    if (hasCoords && bounds.isValid()) {
+      this.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+    }
+  }
+
+  /**
+   * Limpa as rotas desenhadas no mapa.
+   */
+  clearRoutes() {
+    if (this.routeLayerGroup) {
+      this.routeLayerGroup.clearLayers();
+    }
+    this.currentRoutePlan = null;
+  }
+
+  /**
+   * Foca o mapa em uma rota específica de técnico.
+   */
+  zoomToRoute(routeIndex = 0) {
+    if (!this.currentRoutePlan || !this.currentRoutePlan.routes[routeIndex]) return;
+    const route = this.currentRoutePlan.routes[routeIndex];
+    const bounds = L.latLngBounds();
+    if (route.depot_lat && route.depot_lon) bounds.extend([route.depot_lat, route.depot_lon]);
+    route.stops.forEach((s) => bounds.extend([s.latitude, s.longitude]));
+    if (bounds.isValid()) {
+      this.map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+    }
+  }
 }
+
 

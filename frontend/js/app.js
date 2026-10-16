@@ -1,5 +1,5 @@
-import { api } from "./api.js?v=2.2.2";
-import { MapManager } from "./map.js?v=2.2.2";
+import { api } from "./api.js?v=2.2.3";
+import { MapManager } from "./map.js?v=2.2.3";
 
 // Garantir inicialização no escopo global para compatibilidade irrestrita
 window.currentBatchJobId = null;
@@ -103,6 +103,28 @@ document.addEventListener("DOMContentLoaded", () => {
   let batchPollInterval = null;
   let currentBatchPoints = null;
   let isBatchPlotted = false;
+
+  // Roteirização Inteligente de Visitas
+  const batchRoutingCard = document.getElementById("batch-routing-card");
+  const routeFilterAnalysis = document.getElementById("route-filter-analysis");
+  const routeFilterViable = document.getElementById("route-filter-viable");
+  const routeParamTechs = document.getElementById("route-param-techs");
+  const routeParamDepot = document.getElementById("route-param-depot");
+  const routeParamMaxStops = document.getElementById("route-param-max-stops");
+  const routeParamMaxDist = document.getElementById("route-param-max-dist");
+  const btnGenerateRoutes = document.getElementById("btn-generate-routes");
+  const routeResultsContainer = document.getElementById("route-results-container");
+  const routeResultsSummary = document.getElementById("route-results-summary");
+  const routeCardsList = document.getElementById("route-cards-list");
+  const btnClearRoutes = document.getElementById("btn-clear-routes");
+  const btnExportRouteKmz = document.getElementById("btn-export-route-kmz");
+  const btnExportRouteCsv = document.getElementById("btn-export-route-csv");
+  const mapRoutesToolbar = document.getElementById("map-routes-toolbar");
+  const mapRoutesChipTotal = document.getElementById("map-routes-chip-total");
+  const btnMapRoutesClose = document.getElementById("btn-map-routes-close");
+  const btnMapRoutesZoom = document.getElementById("btn-map-routes-zoom");
+
+  let currentRoutePlan = null;
 
   // Camadas (Manchas)
   const layersListContainer = document.getElementById("layers-list-container");
@@ -606,6 +628,11 @@ document.addEventListener("DOMContentLoaded", () => {
       clearInterval(batchPollInterval);
       batchPollInterval = null;
     }
+    if (batchRoutingCard) batchRoutingCard.style.display = "none";
+    if (routeResultsContainer) routeResultsContainer.style.display = "none";
+    if (mapRoutesToolbar) mapRoutesToolbar.style.display = "none";
+    mapManager.clearRoutes();
+    currentRoutePlan = null;
   }
 
   if (btnRemoveBatchFile) {
@@ -682,6 +709,11 @@ document.addEventListener("DOMContentLoaded", () => {
       clearInterval(batchPollInterval);
       batchPollInterval = null;
     }
+    if (batchRoutingCard) batchRoutingCard.style.display = "none";
+    if (routeResultsContainer) routeResultsContainer.style.display = "none";
+    if (mapRoutesToolbar) mapRoutesToolbar.style.display = "none";
+    mapManager.clearRoutes();
+    currentRoutePlan = null;
     if (btnToggleBatchMap) {
       btnToggleBatchMap.innerHTML = `<i class="fa-solid fa-layer-group"></i> <span id="btn-toggle-batch-map-text">Plotar no Mapa</span>`;
     }
@@ -755,6 +787,17 @@ document.addEventListener("DOMContentLoaded", () => {
         batchDownloadKmzAnalysisBtn.setAttribute("download", `viabilidade_em_analise_${job.job_id.slice(0, 8)}.kmz`);
       } else {
         batchDownloadKmzAnalysisBtn.style.display = "none";
+      }
+    }
+
+    // Exibir card de roteirização inteligente com pré-seleção adequada
+    if (batchRoutingCard) {
+      batchRoutingCard.style.display = "block";
+      if (routeFilterAnalysis) {
+        routeFilterAnalysis.checked = (job.analysis_count || 0) > 0;
+      }
+      if (routeFilterViable) {
+        routeFilterViable.checked = (job.analysis_count || 0) === 0 && (job.viable_count || 0) > 0;
       }
     }
   }
@@ -981,6 +1024,162 @@ document.addEventListener("DOMContentLoaded", () => {
     syncFilterStatus("EM_ANALISE", true);
     mapManager.zoomToBatch("EM_ANALISE");
   });
+
+  // ==========================================
+  // AÇÕES DO MÓDULO DE ROTEIRIZAÇÃO INTELIGENTE
+  // ==========================================
+  async function handleGenerateRoutes() {
+    if (!currentBatchJobId) {
+      alert("Nenhum lote ativo encontrado para roteirização.");
+      return;
+    }
+
+    const filterStatus = [];
+    if (routeFilterAnalysis && routeFilterAnalysis.checked) filterStatus.push("EM_ANALISE");
+    if (routeFilterViable && routeFilterViable.checked) filterStatus.push("VIAVEL");
+
+    if (filterStatus.length === 0) {
+      alert("Por favor, selecione ao menos um status de pontos (Em Análise ou Viáveis) para incluir no roteiro.");
+      return;
+    }
+
+    const numTechs = routeParamTechs ? parseInt(routeParamTechs.value, 10) : 2;
+    const depotMode = routeParamDepot ? routeParamDepot.value : "nearest_pop";
+    const maxStops = routeParamMaxStops ? parseInt(routeParamMaxStops.value, 10) : 8;
+    const maxDist = routeParamMaxDist ? parseFloat(routeParamMaxDist.value) : 60.0;
+
+    if (btnGenerateRoutes) {
+      btnGenerateRoutes.disabled = true;
+      btnGenerateRoutes.innerHTML = `<span class="spinner-mini"></span> Otimizando Roteiros...`;
+    }
+
+    try {
+      const plan = await api.planRoutes({
+        job_id: currentBatchJobId,
+        num_technicians: numTechs,
+        max_stops_per_technician: isNaN(maxStops) ? 8 : maxStops,
+        max_distance_km: isNaN(maxDist) ? 60.0 : maxDist,
+        depot_mode: depotMode,
+        filter_status: filterStatus
+      });
+
+      currentRoutePlan = plan;
+
+      // Renderizar traçados e pins no mapa
+      mapManager.renderRoutes(plan);
+
+      // Renderizar cartões laterais
+      renderRouteResults(plan);
+
+      // Exibir barra de controle de rotas no mapa
+      if (mapRoutesToolbar) {
+        mapRoutesToolbar.style.display = "block";
+        if (mapRoutesChipTotal) mapRoutesChipTotal.textContent = `${plan.total_assigned_stops} visitas`;
+      }
+    } catch (err) {
+      alert(`Falha ao calcular roteirização: ${err.message}`);
+    } finally {
+      if (btnGenerateRoutes) {
+        btnGenerateRoutes.disabled = false;
+        btnGenerateRoutes.innerHTML = `<i class="fa-solid fa-route"></i> Otimizar e Gerar Roteiros`;
+      }
+    }
+  }
+
+  function renderRouteResults(plan) {
+    if (!routeResultsContainer || !routeCardsList) return;
+
+    routeResultsContainer.style.display = "block";
+    if (routeResultsSummary) {
+      routeResultsSummary.textContent = `${plan.routes.length} roteiro(s) • ${plan.total_assigned_stops} visitas`;
+    }
+
+    routeCardsList.innerHTML = "";
+
+    if (plan.routes.length === 0) {
+      routeCardsList.innerHTML = `<div style="font-size: 0.75rem; color: #94a3b8; padding: 0.5rem 0;">Nenhuma rota pôde ser gerada com os parâmetros informados.</div>`;
+      return;
+    }
+
+    plan.routes.forEach((route, idx) => {
+      const card = document.createElement("div");
+      card.className = "route-card-item";
+      card.style.borderLeftColor = route.color_hex;
+
+      const warningHtml = route.warning_message ? `
+        <div style="font-size: 0.7rem; color: #f59e0b; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); padding: 0.3rem 0.45rem; border-radius: 4px; margin-bottom: 0.45rem;">
+          <i class="fa-solid fa-triangle-exclamation"></i> ${route.warning_message}
+        </div>
+      ` : "";
+
+      card.innerHTML = `
+        <div class="route-card-header">
+          <div class="route-tech-title">
+            <span style="width: 10px; height: 10px; border-radius: 50%; background: ${route.color_hex}; display: inline-block;"></span>
+            <span>${route.technician_name}</span>
+          </div>
+          <span style="font-size: 0.72rem; font-weight: 700; color: #fff;">${route.total_stops} visitas</span>
+        </div>
+        <div class="route-metrics-bar">
+          <span><i class="fa-solid fa-road"></i> ${route.total_distance_km} km</span>
+          <span><i class="fa-solid fa-clock"></i> ~${route.total_estimated_duration_hours}h</span>
+          <span><i class="fa-solid fa-warehouse"></i> ${route.depot_name}</span>
+        </div>
+        ${warningHtml}
+        <div class="route-actions-row">
+          <a href="${route.google_maps_multi_stop_url}" target="_blank" class="btn-route-action maps" title="Abrir roteiro completo com todas as paradas no Google Maps">
+            <i class="fa-solid fa-location-arrow"></i> Google Maps
+          </a>
+          <button type="button" class="btn-route-action focus btn-focus-tech-route" data-idx="${idx}" title="Centralizar esta rota no mapa">
+            <i class="fa-solid fa-crosshairs"></i> Focar
+          </button>
+        </div>
+      `;
+
+      card.querySelector(".btn-focus-tech-route").addEventListener("click", () => {
+        mapManager.zoomToRoute(idx);
+      });
+
+      routeCardsList.appendChild(card);
+    });
+
+    if (btnExportRouteKmz) {
+      btnExportRouteKmz.href = api.getRouteKmzUrl(plan.plan_id);
+      btnExportRouteKmz.setAttribute("download", `roteiro_visitas_${plan.plan_id.slice(0, 8)}.kmz`);
+    }
+
+    if (btnExportRouteCsv) {
+      btnExportRouteCsv.href = api.getRouteCsvUrl(plan.plan_id);
+      btnExportRouteCsv.setAttribute("download", `roteiro_visitas_${plan.plan_id.slice(0, 8)}.csv`);
+    }
+  }
+
+  // Event Listeners de Roteirização
+  if (btnGenerateRoutes) btnGenerateRoutes.addEventListener("click", handleGenerateRoutes);
+
+  if (btnClearRoutes) {
+    btnClearRoutes.addEventListener("click", () => {
+      mapManager.clearRoutes();
+      currentRoutePlan = null;
+      if (routeResultsContainer) routeResultsContainer.style.display = "none";
+      if (mapRoutesToolbar) mapRoutesToolbar.style.display = "none";
+    });
+  }
+
+  if (btnMapRoutesClose) {
+    btnMapRoutesClose.addEventListener("click", () => {
+      mapManager.clearRoutes();
+      currentRoutePlan = null;
+      if (mapRoutesToolbar) mapRoutesToolbar.style.display = "none";
+      if (routeResultsContainer) routeResultsContainer.style.display = "none";
+    });
+  }
+
+  if (btnMapRoutesZoom) {
+    btnMapRoutesZoom.addEventListener("click", () => {
+      if (currentRoutePlan) mapManager.renderRoutes(currentRoutePlan);
+    });
+  }
 
   // ==========================================
   // GESTÃO E UPLOAD DE MANCHAS (GEOJSON / KMZ)
