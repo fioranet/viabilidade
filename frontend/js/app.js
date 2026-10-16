@@ -1,5 +1,9 @@
-import { api } from "./api.js?v=2.2.1";
-import { MapManager } from "./map.js?v=2.2.1";
+import { api } from "./api.js?v=2.2.2";
+import { MapManager } from "./map.js?v=2.2.2";
+
+// Garantir inicialização no escopo global para compatibilidade irrestrita
+window.currentBatchJobId = null;
+window.batchPollInterval = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   const mapManager = new MapManager("map");
@@ -707,6 +711,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const res = await api.uploadBatch(file, selectedBatchLayer || null, options);
       currentBatchJobId = res.job_id;
+      window.currentBatchJobId = res.job_id;
       pollBatchStatus(res.job_id);
       refreshSystemStatus();
     } catch (err) {

@@ -48,6 +48,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_anti_cache_headers(request, call_next):
+    """Garante que o navegador nunca sirva arquivos estáticos ou páginas com cache obsoleto."""
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".html", ".js", ".css", ".json")):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 # Carregar camadas imediatamente na inicialização
 layer_manager.load_all_layers()
 
